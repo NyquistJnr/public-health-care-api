@@ -61,6 +61,11 @@ def setup_database():
         )
         conn_new.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         cursor_new = conn_new.cursor()
+        
+        print("Granting role permissions for cloud environment...")
+        cursor_new.execute(f"GRANT {DB_USER} TO {MASTER_USER};")
+        
+        print("Applying final schema and ownership rules...")
         cursor_new.execute(f"GRANT ALL ON SCHEMA public TO {DB_USER};")
         cursor_new.execute(f"ALTER DATABASE {DB_NAME} OWNER TO {DB_USER};")
         
