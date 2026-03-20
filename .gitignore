@@ -1,0 +1,57 @@
+# =========================
+# Environment Variables (CRITICAL)
+# =========================
+.env
+.env.local
+.env.*
+
+# =========================
+# Virtual Environments
+# =========================
+venv/
+env/
+.venv/
+ENV/
+
+# =========================
+# Python & Django
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.log
+
+# Ignore local SQLite databases (even though we use Postgres, Django sometimes generates this by default)
+db.sqlite3
+db.sqlite3-journal
+
+# Ignore media uploads (user avatars, patient files, etc.)
+media/
+
+# Ignore static files collected for production (WhiteNoise will build this on Vercel)
+staticfiles/
+STATIC/
+
+# =========================
+# Vercel Serverless
+# =========================
+.vercel/
+
+# =========================
+# OS Generated Files
+# =========================
+.DS_Store
+.DS_Store?
+._*
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# =========================
+# IDEs & Editors
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
