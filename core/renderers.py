@@ -7,7 +7,6 @@ class UniformJSONRenderer(JSONRenderer):
             data = {}
 
         status_code = renderer_context['response'].status_code
-
         response_dict = {
             'status': 'success' if status_code < 400 else 'error',
             'message': 'Request processed successfully' if status_code < 400 else 'An error occurred',
@@ -21,7 +20,6 @@ class UniformJSONRenderer(JSONRenderer):
             if isinstance(data, dict):
                 if 'detail' in data:
                     response_dict['message'] = str(data['detail'])
-                
                 elif len(data) > 0:
                     first_field = next(iter(data))
                     first_error = data[first_field]
@@ -37,6 +35,12 @@ class UniformJSONRenderer(JSONRenderer):
                         clean_field_name = first_field.replace('_', ' ').capitalize()
                         response_dict['message'] = f"{clean_field_name}: {error_text}"
         else:
+            if isinstance(data, dict) and 'detail' in data:
+                response_dict['message'] = str(data['detail'])
+                del data['detail']
+                if not data:
+                    data = None
+                    
             response_dict['data'] = data
 
         return super().render(response_dict, accepted_media_type, renderer_context)
