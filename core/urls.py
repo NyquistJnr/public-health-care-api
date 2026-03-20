@@ -5,7 +5,8 @@ from .views import (
     UserInviteView, 
     CustomTokenRefreshView,
     ForgotPasswordView,
-    ResetPasswordView
+    ResetPasswordView,
+    UserProfileView
 )
 from .view_facility import FacilityUserListView, PatientCreateView,FacilityUserStatsView, UserStatusToggleView
 from .view_audit_log import AuditLogListView
@@ -21,4 +22,5 @@ urlpatterns = [
     path('facility-users/stats/', FacilityUserStatsView.as_view(), name='facility_user_stats'),
     path('users/<uuid:user_id>/toggle-status/', UserStatusToggleView.as_view(), name='user_toggle_status'),
     path('audit-logs/', AuditLogListView.as_view(), name='audit_logs'),
+    path('profile/', UserProfileView.as_view(), name='user_profile'),
 ]

@@ -126,3 +126,31 @@ class AuditLogSerializer(serializers.ModelSerializer):
             'module', 'ip_address', 'endpoint', 'target_object_id', 
             'changes', 'timestamp'
         ]
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            'id', 'staff_id', 'first_name', 'last_name', 'middle_name', 
+            'email', 'phone_number', 'address', 'city', 'state', 'country', 
+            'profile_picture', 'role', 'is_active', 'last_login', 'created_at'
+        ]
+        read_only_fields = [
+            'id', 'staff_id', 'role', 'is_active', 'last_login', 'created_at'
+        ]
+
+    def validate_email(self, value):
+        """Ensure that if they change their email, it isn't taken by someone else."""
+        user = self.context['request'].user
+        if User.objects.exclude(pk=user.pk).filter(email__iexact=value).exists():
+            raise serializers.ValidationError("This email address is already in use.")
+        return value
+
+    def update(self, instance, validated_data):
+        """Intercept the save to ensure the internal username matches the new email."""
+        email = validated_data.get('email', instance.email)
+        
+        if email != instance.email:
+            instance.username = email
+            
+        return super().update(instance, validated_data)

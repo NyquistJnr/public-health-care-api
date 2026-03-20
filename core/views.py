@@ -14,12 +14,13 @@ from .serializers import (
     EmailTokenObtainPairSerializer, 
     ForgotPasswordSerializer, 
     ResetPasswordSerializer,
-    UserInviteSerializer
+    UserInviteSerializer,
+    UserProfileSerializer
 )
 from .models import User
 from core.permissions import HasRequiredPermission
 from django.http import JsonResponse
-
+from rest_framework.permissions import IsAuthenticated
 
 @extend_schema(
     tags=["Authentication"],
@@ -129,6 +130,18 @@ class UserInviteView(generics.CreateAPIView):
             [user.email],
             fail_silently=True,
         )
+
+@extend_schema(tags=["User Profile"], summary="Get or Update Logged-in User Profile")
+class UserProfileView(generics.RetrieveUpdateAPIView):
+    serializer_class = UserProfileSerializer
+    permission_classes = [IsAuthenticated] 
+
+    def get_object(self):
+        """
+        Instead of looking for an ID in the URL, this tells the view to 
+        always return the exact user who owns the current JWT token.
+        """
+        return self.request.user
 
 def global_404(request, exception=None):
     """Catches bad URLs and returns standard JSON instead of HTML."""
