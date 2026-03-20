@@ -2,11 +2,21 @@
 from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-from .serializers import FacilityUserListSerializer, PatientCreateSerializer
+from .serializers import FacilityUserListSerializer, PatientCreateSerializer, StatusUpdateSerializer
 from rest_framework import generics
 from drf_spectacular.utils import extend_schema
 from .models import User
 from core.permissions import HasRequiredPermission
+from rest_framework import status
+from rest_framework.exceptions import PermissionDenied
+from rest_framework import generics
+from drf_spectacular.utils import extend_schema
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from .models import User
+from core.permissions import HasRequiredPermission
+from core.serializers import EmptyStatsSerializer
 
 @extend_schema(
     tags=["Facility Management"], 
@@ -76,3 +86,55 @@ class PatientCreateView(generics.CreateAPIView):
             created_by=self.request.user, 
             facility=self.request.user.facility
         )
+
+@extend_schema(tags=["User Management"], summary="Suspend or Activate a User", request=StatusUpdateSerializer)
+class UserStatusToggleView(APIView):
+    permission_classes = [HasRequiredPermission]
+    serializer_class = StatusUpdateSerializer
+    
+    @property
+    def required_permissions(self):
+        return ['core.change_user']
+
+    def patch(self, request, user_id):
+        serializer = StatusUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            user = User.objects.get(id=user_id)
+
+            if user == request.user:
+                raise PermissionDenied("You cannot suspend your own account.")
+                
+            if request.user.role == 'FACILITY_IT_ADMIN' and user.facility != request.user.facility:
+                raise PermissionDenied("You can only modify users within your own facility.")
+
+            user.is_active = serializer.validated_data['is_active']
+            user.save(update_fields=['is_active', 'updated_at'])
+
+            status_text = "activated" if user.is_active else "suspended"
+            return Response({"detail": f"User '{user.first_name}' has been successfully {status_text}."})
+
+        except User.DoesNotExist:
+            return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+@extend_schema(tags=["Facility Management"], summary="Get User Statistics for a Facility")
+class FacilityUserStatsView(APIView):
+    permission_classes = [HasRequiredPermission]
+    serializer_class = EmptyStatsSerializer
+    
+    @property
+    def required_permissions(self): 
+        return ['core.view_user']
+
+    def get(self, request):
+        qs = User.objects.filter(facility=request.user.facility)
+
+        if request.user.role in ['FACILITY_IT_ADMIN', 'ADMIN']:
+            qs = qs.exclude(role='PATIENT')
+
+        return Response({
+            "total_users": qs.count(),
+            "active_users": qs.filter(is_active=True).count(),
+            "suspended_users": qs.filter(is_active=False).count()
+        })

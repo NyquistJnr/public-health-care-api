@@ -7,7 +7,8 @@ from .views import (
     ForgotPasswordView,
     ResetPasswordView
 )
-from .view_facility import FacilityUserListView, PatientCreateView
+from .view_facility import (FacilityUserListView, PatientCreateView,
+                            FacilityUserStatsView, UserStatusToggleView)
 
 urlpatterns = [
     path('login/', CustomLoginView.as_view(), name='token_obtain_pair'),
@@ -17,4 +18,6 @@ urlpatterns = [
     path('invite/', UserInviteView.as_view(), name='user_invite'),
     path('facility-users/', FacilityUserListView.as_view(), name='facility_user_list'),
     path('patients/register/', PatientCreateView.as_view(), name='patient_register'),
+    path('facility-users/stats/', FacilityUserStatsView.as_view(), name='facility_user_stats'),
+    path('users/<uuid:user_id>/toggle-status/', UserStatusToggleView.as_view(), name='user_toggle_status'),
 ]

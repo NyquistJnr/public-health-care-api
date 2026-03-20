@@ -2,14 +2,11 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.backends import ModelBackend
 from django.db.models import Q
+from rest_framework.exceptions import AuthenticationFailed
 
 User = get_user_model()
 
 class EmailOrUsernameModelBackend(ModelBackend):
-    """
-    Allows users to log in using either their email address or their username.
-    This seamlessly bridges CLI-created users and API-created users.
-    """
     def authenticate(self, request, username=None, password=None, **kwargs):
         login_identifier = kwargs.get('email', username)
         
@@ -24,6 +21,9 @@ class EmailOrUsernameModelBackend(ModelBackend):
             return None
 
         if user.check_password(password) and self.user_can_authenticate(user):
+            if user.facility and not user.facility.is_active:
+                raise AuthenticationFailed("Access Denied: Your facility has been suspended by the State. Please contact administration.")
+                
             return user
             
         return None

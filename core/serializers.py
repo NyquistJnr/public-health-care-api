@@ -109,3 +109,9 @@ class PatientCreateSerializer(serializers.ModelSerializer):
             pass 
 
         return user
+
+class StatusUpdateSerializer(serializers.Serializer):
+    is_active = serializers.BooleanField(help_text="Set to true to activate, false to suspend.")
+
+class EmptyStatsSerializer(serializers.Serializer):
+    pass
