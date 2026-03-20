@@ -55,3 +55,8 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+
+# Custom files or directories to ignore can be added below
+route_to_plateau.py
+.env.text
