@@ -1,5 +1,6 @@
 # core/views.py
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from .serializers import FacilityUserListSerializer, PatientCreateSerializer, StatusUpdateSerializer
@@ -26,6 +27,7 @@ from core.serializers import EmptyStatsSerializer
         OpenApiParameter(name='role', description='Filter by role (DOCTOR, NURSE) or use "STAFF" for all employees', required=False, type=str),
         OpenApiParameter(name='start_date', description='Filter by start date (YYYY-MM-DD)', required=False, type=str),
         OpenApiParameter(name='end_date', description='Filter by end date (YYYY-MM-DD)', required=False, type=str),
+        OpenApiParameter(name='is_active', description='Filter by active status (true/false)', required=False, type=str),
     ]
 )
 class FacilityUserListView(generics.ListAPIView):
@@ -65,6 +67,12 @@ class FacilityUserListView(generics.ListAPIView):
             qs = qs.filter(created_at__gte=start_date)
         if end_date:
             qs = qs.filter(created_at__lte=end_date)
+
+        is_active_param = self.request.query_params.get('is_active')
+
+        if is_active_param is not None:
+            is_active_bool = is_active_param.lower() in ['true', '1', 't', 'y', 'yes']
+            qs = qs.filter(is_active=is_active_bool)
 
         return qs.order_by('-created_at')
 
@@ -109,8 +117,11 @@ class UserStatusToggleView(APIView):
             if request.user.role == 'FACILITY_IT_ADMIN' and user.facility != request.user.facility:
                 raise PermissionDenied("You can only modify users within your own facility.")
 
-            user.is_active = serializer.validated_data['is_active']
-            user.save(update_fields=['is_active', 'updated_at'])
+            is_active = serializer.validated_data['is_active']
+            user.is_active = is_active
+            user.suspended_at = None if is_active else timezone.now() # Clear it if activated, stamp it if suspended
+            
+            user.save(update_fields=['is_active', 'suspended_at', 'updated_at'])
 
             status_text = "activated" if user.is_active else "suspended"
             return Response({"detail": f"User '{user.first_name}' has been successfully {status_text}."})

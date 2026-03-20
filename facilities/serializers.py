@@ -33,9 +33,9 @@ class FacilitySerializer(serializers.ModelSerializer):
             'manager_first_name', 'manager_last_name', 'manager_email', 'manager_phone', 
             'it_admin_first_name', 'it_admin_last_name', 'it_admin_email', 'it_admin_phone', 
             'manager', 'it_admin', 'manager_name', 'it_admin_name', 'patient_count', 'staff_count', 
-            'is_active', 'created_at', 'updated_at' 
+            'is_active', 'suspended_at', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'code', 'state', 'manager', 'it_admin', 'is_active', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'code', 'state', 'manager', 'it_admin', 'is_active', 'suspended_at', 'created_at', 'updated_at']
 
     def get_state(self, obj) -> str:
         if hasattr(connection, 'tenant') and connection.tenant.schema_name != 'public':

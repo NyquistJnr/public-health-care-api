@@ -14,6 +14,7 @@ class Facility(BaseModel):
     manager_email = models.EmailField(null=True, blank=True)
     manager = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='managed_facilities')
     it_admin = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='administered_facilities')
+    suspended_at = models.DateTimeField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
         if not self.code:

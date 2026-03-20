@@ -78,7 +78,8 @@ class FacilityUserListSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'staff_id', 'first_name', 'last_name', 'middle_name', 
-            'email', 'phone_number', 'role', 'is_active', 'created_at'
+            'email', 'phone_number', 'role', 
+            'is_active', 'suspended_at', 'last_login', 'created_at'
         ]
 
 class PatientCreateSerializer(serializers.ModelSerializer):

@@ -58,6 +58,7 @@ class User(AbstractUser):
     staff_id = models.CharField(max_length=50, unique=True, null=True, blank=True, editable=False)
     sequence_number = models.BigIntegerField(null=True, blank=True, editable=False, db_index=True)
     facility = models.ForeignKey('facilities.Facility', on_delete=models.SET_NULL, null=True, blank=True, related_name='staff_members')
+    suspended_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
