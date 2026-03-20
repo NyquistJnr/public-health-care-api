@@ -4,6 +4,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, Spec
 
 urlpatterns = [
     path('auth/', include('core.urls')),
+    path('facilities/', include('facilities.urls')),
     
     # OpenAPI Schema Generation, Swagger & ReDoc UI 
     path('schema/', SpectacularAPIView.as_view(), name='schema'),

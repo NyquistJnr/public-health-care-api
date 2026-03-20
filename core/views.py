@@ -14,9 +14,12 @@ from .serializers import (
     EmailTokenObtainPairSerializer, 
     ForgotPasswordSerializer, 
     ResetPasswordSerializer,
-    UserSignupSerializer
+    UserInviteSerializer
 )
 from .models import User
+from core.permissions import HasRequiredPermission
+from django.http import JsonResponse
+
 
 @extend_schema(
     tags=["Authentication"],
@@ -25,16 +28,6 @@ from .models import User
 )
 class CustomLoginView(TokenObtainPairView):
     serializer_class = EmailTokenObtainPairSerializer
-
-
-@extend_schema(
-    tags=["Authentication"],
-    summary="Sign Up",
-    description="Creates an Account of any USER TYPE: DOCTOR, NURSE, PATIENT and ADMIN"
-)
-class UserSignUpView(generics.CreateAPIView):
-    queryset = User.objects.all()
-    permission_classes = [AllowAny]
 
 @extend_schema(
     tags=["Authentication"],
@@ -110,14 +103,47 @@ class ResetPasswordView(APIView):
         else:
             return Response({"detail": "Invalid or expired reset token."}, status=status.HTTP_400_BAD_REQUEST)
 
-@extend_schema(
-    tags=["Authentication"],
-    summary="Sign Up",
-    description="Creates an Account of any USER TYPE: DOCTOR, NURSE, PATIENT and ADMIN",
-    request=UserSignupSerializer,
-    responses={201: UserSignupSerializer}
-)
-class UserSignUpView(generics.CreateAPIView):
+@extend_schema(tags=["User Management"], summary="Invite New User")
+class UserInviteView(generics.CreateAPIView):
     queryset = User.objects.all()
-    permission_classes = [AllowAny]
-    serializer_class = UserSignupSerializer
+    serializer_class = UserInviteSerializer
+    permission_classes = [HasRequiredPermission]
+    
+    @property
+    def required_permissions(self):
+        return ['core.add_user']
+
+    def perform_create(self, serializer):
+        inviter_facility = self.request.user.facility
+        user = serializer.save(created_by=self.request.user, facility=inviter_facility)
+        uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+        token = PasswordResetTokenGenerator().make_token(user)
+        
+        subject = "Welcome to the Public Health Care System"
+        message = f"Hello {user.first_name},\n\nAn administrator has created an account for you.\n\nTo set your password and activate your account, use the following details in your app:\n\nUID: {uidb64}\nToken: {token}\n\nRole: {user.role}"
+        
+        send_mail(
+            subject,
+            message,
+            "noreply@health.gov.ng",
+            [user.email],
+            fail_silently=True,
+        )
+
+def global_404(request, exception=None):
+    """Catches bad URLs and returns standard JSON instead of HTML."""
+    return JsonResponse({
+        "status": "error",
+        "message": "The requested endpoint was not found.",
+        "data": None,
+        "errors": {"detail": "Not found."}
+    }, status=404)
+
+def global_500(request):
+    """Catches critical server crashes and returns standard JSON instead of HTML."""
+    return JsonResponse({
+        "status": "error",
+        "message": "An internal server error occurred.",
+        "data": None,
+        "errors": {"detail": "Server Error."}
+    }, status=500)

@@ -53,6 +53,7 @@ TENANT_APPS = (
     
     'rest_framework',
     'core',
+    'facilities',
 )
 
 INSTALLED_APPS = list(SHARED_APPS) + [app for app in TENANT_APPS if app not in SHARED_APPS]
@@ -149,6 +150,11 @@ STATIC_URL = 'static/'
 
 AUTH_USER_MODEL = 'core.User'
 
+AUTHENTICATION_BACKENDS = [
+    'core.backends.EmailOrUsernameModelBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_RENDERER_CLASSES': (
@@ -159,7 +165,8 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
-    )
+    ),
+    'EXCEPTION_HANDLER': 'core.exceptions.custom_api_exception_handler',
 }
 
 SIMPLE_JWT = {
@@ -175,6 +182,10 @@ SPECTACULAR_SETTINGS = {
     'DESCRIPTION': 'Multi-tenant healthcare management API',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
+    'SWAGGER_UI_SETTINGS': {
+        'docExpansion': 'none', 
+        'defaultModelsExpandDepth': -1,
+    },
 }
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')

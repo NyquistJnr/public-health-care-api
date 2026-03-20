@@ -11,7 +11,15 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
         ROLES_AND_PERMISSIONS = {
+            'ADMIN': [
+                'add_facility', 'view_facility', 'change_facility', 'delete_facility'
+            ],
+            'FACILITY_IT_ADMIN': [
+                'view_facility', 'change_facility',
+                'add_user', 'change_user', 'view_user'
+            ],
             'DOCTOR': [
+                'view_facility',
                 'view_patient_profile', 'view_patient_history',
                 'add_medical_record', 'view_medical_record', 'change_own_medical_record',
                 'add_prescription', 'view_prescription', 'cancel_prescription',
@@ -19,6 +27,7 @@ class Command(BaseCommand):
                 'add_lab_order', 'view_lab_result'
             ],
             'NURSE': [
+                'view_facility',
                 'view_patient_profile', 'view_patient_history',
                 'view_medical_record', 'add_nursing_note',
                 'view_prescription', 'dispense_prescription',
@@ -36,14 +45,18 @@ class Command(BaseCommand):
                 content_type = ContentType.objects.get_for_model(User)
 
                 for role_name, perms in ROLES_AND_PERMISSIONS.items():
-                    group, created = Group.objects.get_or_create(name=role_name)
+                    group, _ = Group.objects.get_or_create(name=role_name)
                     
                     for perm_code in perms:
-                        permission, _ = Permission.objects.get_or_create(
-                            codename=perm_code,
-                            content_type=content_type,
-                            defaults={'name': f"Can {perm_code.replace('_', ' ')}"}
-                        )
+                        permission = Permission.objects.filter(codename=perm_code).first()
+                        
+                        if not permission:
+                            permission = Permission.objects.create(
+                                codename=perm_code,
+                                content_type=content_type,
+                                name=f"Can {perm_code.replace('_', ' ')}"
+                            )
+                        
                         group.permissions.add(permission)
                     
-                    self.stdout.write(self.style.SUCCESS(f"✅ Configured {role_name} with {len(perms)} permissions."))
+                    self.stdout.write(self.style.SUCCESS(f"  ✅ Configured {role_name} with {len(perms)} permissions."))
