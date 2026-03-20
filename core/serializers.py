@@ -1,4 +1,5 @@
 # core/serializers.py
+import uuid
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.models import Group
@@ -66,6 +67,43 @@ class UserInviteSerializer(serializers.ModelSerializer):
 
         try:
             group = Group.objects.get(name=user.role)
+            user.groups.add(group)
+        except Group.DoesNotExist:
+            pass 
+
+        return user
+
+class FacilityUserListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            'id', 'staff_id', 'first_name', 'last_name', 'middle_name', 
+            'email', 'phone_number', 'role', 'is_active', 'created_at'
+        ]
+
+class PatientCreateSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(required=False, allow_blank=True)
+    
+    class Meta:
+        model = User
+        fields = [
+            'id', 'first_name', 'last_name', 'middle_name', 
+            'email', 'phone_number', 'is_active'
+        ]
+        read_only_fields = ['id']
+
+    def create(self, validated_data):
+        email = validated_data.get('email', '')
+        username = email if email else f"patient_{uuid.uuid4().hex[:10]}"
+        
+        user = User(**validated_data)
+        user.username = username
+        user.role = 'PATIENT'
+        user.set_unusable_password() 
+        user.save()
+
+        try:
+            group = Group.objects.get(name='PATIENT')
             user.groups.add(group)
         except Group.DoesNotExist:
             pass 

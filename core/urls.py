@@ -7,6 +7,7 @@ from .views import (
     ForgotPasswordView,
     ResetPasswordView
 )
+from .view_facility import FacilityUserListView, PatientCreateView
 
 urlpatterns = [
     path('login/', CustomLoginView.as_view(), name='token_obtain_pair'),
@@ -14,4 +15,6 @@ urlpatterns = [
     path('forgot-password/', ForgotPasswordView.as_view(), name='forgot_password'),
     path('reset-password/', ResetPasswordView.as_view(), name='reset_password'),
     path('invite/', UserInviteView.as_view(), name='user_invite'),
+    path('facility-users/', FacilityUserListView.as_view(), name='facility_user_list'),
+    path('patients/register/', PatientCreateView.as_view(), name='patient_register'),
 ]
