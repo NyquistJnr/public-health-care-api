@@ -9,7 +9,6 @@ from drf_spectacular.utils import extend_schema
 from .models import User
 from core.permissions import HasRequiredPermission
 from rest_framework import status
-from rest_framework.exceptions import PermissionDenied
 from rest_framework import generics
 from drf_spectacular.utils import extend_schema
 from rest_framework import status

@@ -4,6 +4,7 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models, transaction, connection
 from django.conf import settings
 from django.utils import timezone
+from core.audit_context import current_request, get_client_ip
 
 class BaseModel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -20,13 +21,89 @@ class BaseModel(models.Model):
     class Meta:
         abstract = True
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._original_state = self._get_current_state()
+
+    def _get_current_state(self):
+        """Returns a dictionary of the current model fields."""
+        return {field.name: getattr(self, field.name) for field in self._meta.fields}
+
+    def _get_changed_fields(self):
+        """Compares original state to current state and returns a diff."""
+        if not self.pk:
+            return {"_all_": "New Object Created"}
+            
+        changes = {}
+        current_state = self._get_current_state()
+        for field, old_value in self._original_state.items():
+            new_value = current_state[field]
+            if old_value != new_value:
+                changes[field] = {
+                    "old": str(old_value) if old_value is not None else None,
+                    "new": str(new_value) if new_value is not None else None
+                }
+        return changes
+
+    def _log_audit(self, action, changes):
+        request = current_request.get()
+        
+        actor = None
+        actor_name = "System Process"
+        ip_address = None
+        endpoint = None
+
+        if request:
+            ip_address = get_client_ip(request)
+            endpoint = request.path
+            if hasattr(request, 'user') and request.user.is_authenticated:
+                actor = request.user
+                actor_name = f"{actor.first_name} {actor.last_name} ({actor.staff_id or actor.email})"
+            else:
+                actor_name = f"Unknown ({ip_address})"
+
+        log_facility = None
+        if hasattr(self, 'facility') and self.facility:
+            log_facility = self.facility
+        elif self.__class__.__name__ == 'Facility':
+            log_facility = self
+        elif actor and hasattr(actor, 'facility'):
+            log_facility = actor.facility
+
+        module = f"{self._meta.app_label.capitalize()} - {self.__class__.__name__}"
+
+        AuditLog.objects.create(
+            actor=actor,
+            actor_name=actor_name,
+            facility=log_facility,
+            action=action,
+            module=module,
+            ip_address=ip_address,
+            endpoint=endpoint,
+            target_object_id=str(self.pk),
+            changes=changes
+        )
+
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        action = "CREATE" if is_new else "UPDATE"
+        changes = self._get_changed_fields()
+        super().save(*args, **kwargs)
+        
+        if changes:
+            self._log_audit(action, changes)
+            self._original_state = self._get_current_state()
+
     def delete(self, deleted_by=None, *args, **kwargs):
-        """Override the default delete method to perform a soft delete."""
+        """Update your soft-delete method to log the deletion."""
         self.is_active = False
         self.deleted_at = timezone.now()
         if deleted_by:
             self.deleted_by = deleted_by
-        self.save(update_fields=['is_active', 'deleted_at', 'deleted_by'])
+            
+        self._log_audit("SUSPEND", {"is_active": {"old": "True", "new": "False"}})
+        
+        super().save(update_fields=['is_active', 'deleted_at', 'deleted_by'])
 
     def restore(self, restored_by=None):
         """Custom method to restore a soft-deleted record."""
@@ -101,3 +178,22 @@ class User(AbstractUser):
 
     def __str__(self):
         return f"{self.email} - {self.get_role_display()}"
+
+class AuditLog(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    actor_name = models.CharField(max_length=255, help_text="Stores name or 'Unknown (IP)'")
+    action = models.CharField(max_length=50)
+    module = models.CharField(max_length=100)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    endpoint = models.CharField(max_length=255, null=True, blank=True)
+    target_object_id = models.CharField(max_length=255, null=True, blank=True)
+    changes = models.JSONField(null=True, blank=True, help_text="Stores {field: {old: X, new: Y}}")
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+    facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        
+    def __str__(self):
+        return f"{self.actor_name} -> {self.action} on {self.module} at {self.timestamp}"

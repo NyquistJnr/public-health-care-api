@@ -69,6 +69,26 @@ class FacilitySerializer(serializers.ModelSerializer):
             return count
         return None
 
+    def validate(self, attrs):
+        m_email = attrs.get('manager_email')
+        it_email = attrs.get('it_admin_email')
+
+        errors = {}
+
+        if m_email and User.objects.filter(username__iexact=m_email).exists():
+            errors['manager_email'] = f"The email {m_email} is already registered to another user."
+
+        if it_email and User.objects.filter(username__iexact=it_email).exists():
+            errors['it_admin_email'] = f"The email {it_email} is already registered to another user."
+
+        if m_email and it_email and m_email.lower() == it_email.lower():
+            errors['it_admin_email'] = "The IT Admin and Manager cannot use the same email address."
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        return super().validate(attrs)
+
     def _create_facility_user(self, email, first_name, last_name, phone, role, facility, creator):
         """Helper method to create a user, assign them to the facility, and send the invite email."""
         user = User(

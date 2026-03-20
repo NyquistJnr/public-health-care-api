@@ -3,8 +3,7 @@ import uuid
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.models import Group
-from .models import User
-from facilities.models import Facility
+from .models import User, AuditLog
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
     email = serializers.EmailField()
@@ -116,3 +115,14 @@ class StatusUpdateSerializer(serializers.Serializer):
 
 class EmptyStatsSerializer(serializers.Serializer):
     pass
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    facility_name = serializers.CharField(source='facility.name', read_only=True, default="System Level")
+
+    class Meta:
+        model = AuditLog
+        fields = [
+            'id', 'actor_name', 'facility', 'facility_name', 'action', 
+            'module', 'ip_address', 'endpoint', 'target_object_id', 
+            'changes', 'timestamp'
+        ]
