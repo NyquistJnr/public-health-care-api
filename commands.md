@@ -13,3 +13,5 @@
 4. Rebuild the Public Router, State Offices, and Admins
 
 ## python manage.py seed_states
+
+python manage.py setup_rbac

@@ -13,7 +13,8 @@ from rest_framework.views import APIView
 from .serializers import (
     EmailTokenObtainPairSerializer, 
     ForgotPasswordSerializer, 
-    ResetPasswordSerializer
+    ResetPasswordSerializer,
+    UserSignupSerializer
 )
 from .models import User
 
@@ -51,6 +52,7 @@ class CustomTokenRefreshView(TokenRefreshView):
 )
 class ForgotPasswordView(APIView):
     permission_classes = [AllowAny]
+    serializer_class = ForgotPasswordSerializer
 
     def post(self, request):
         serializer = ForgotPasswordSerializer(data=request.data)
@@ -85,6 +87,7 @@ class ForgotPasswordView(APIView):
 )
 class ResetPasswordView(APIView):
     permission_classes = [AllowAny]
+    serializer_class = ResetPasswordSerializer
 
     def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
@@ -106,3 +109,15 @@ class ResetPasswordView(APIView):
             return Response({"detail": "Password successfully reset."}, status=status.HTTP_200_OK)
         else:
             return Response({"detail": "Invalid or expired reset token."}, status=status.HTTP_400_BAD_REQUEST)
+
+@extend_schema(
+    tags=["Authentication"],
+    summary="Sign Up",
+    description="Creates an Account of any USER TYPE: DOCTOR, NURSE, PATIENT and ADMIN",
+    request=UserSignupSerializer,
+    responses={201: UserSignupSerializer}
+)
+class UserSignUpView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    permission_classes = [AllowAny]
+    serializer_class = UserSignupSerializer
