@@ -1,7 +1,6 @@
 # facilities/views.py
 from rest_framework import viewsets
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-from core.permissions import HasRequiredPermission
 from .models import Facility
 from .serializers import FacilitySerializer
 from rest_framework.views import APIView
@@ -15,18 +14,9 @@ class FacilityViewSet(viewsets.ModelViewSet):
     queryset = Facility.objects.all().order_by('-created_at')
     serializer_class = FacilitySerializer
     http_method_names = ['get', 'post', 'patch', 'delete'] 
-    permission_classes = [HasRequiredPermission]
+    # permission_classes = [HasRequiredPermission]
     
-    @property
-    def required_permissions(self):
-        if self.action == 'create':
-            return ['facilities.add_facility']
-        elif self.action in ['update', 'partial_update']:
-            return ['facilities.change_facility']
-        elif self.action == 'destroy':
-            return ['facilities.delete_facility']
-            
-        return ['facilities.view_facility']
+
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -57,12 +47,10 @@ class FacilityViewSet(viewsets.ModelViewSet):
 
 @extend_schema(tags=["Facility Management"], summary="Suspend or Activate an Entire Facility", request=StatusUpdateSerializer)
 class FacilityStatusToggleView(APIView):
-    permission_classes = [HasRequiredPermission]
+    # permission_classes = [HasRequiredPermission]
     serializer_class = StatusUpdateSerializer
     
-    @property
-    def required_permissions(self): 
-        return ['facilities.change_facility']
+
 
     def patch(self, request, facility_id):
         serializer = StatusUpdateSerializer(data=request.data)
@@ -84,12 +72,10 @@ class FacilityStatusToggleView(APIView):
 
 @extend_schema(tags=["Facility Management"], summary="Get State-Wide Facility Statistics")
 class StateFacilityStatsView(APIView):
-    permission_classes = [HasRequiredPermission]
+    # permission_classes = [HasRequiredPermission]
     serializer_class = EmptyStatsSerializer
     
-    @property
-    def required_permissions(self): 
-        return ['facilities.view_facility']
+
 
     def get(self, request):
         return Response({

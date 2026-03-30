@@ -7,7 +7,6 @@ from .serializers import FacilityUserListSerializer, PatientCreateSerializer, St
 from rest_framework import generics
 from drf_spectacular.utils import extend_schema
 from .models import User
-from core.permissions import HasRequiredPermission
 from rest_framework import status
 from rest_framework import generics
 from drf_spectacular.utils import extend_schema
@@ -15,7 +14,6 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import User
-from core.permissions import HasRequiredPermission
 from core.serializers import EmptyStatsSerializer
 
 @extend_schema(
@@ -31,11 +29,7 @@ from core.serializers import EmptyStatsSerializer
 )
 class FacilityUserListView(generics.ListAPIView):
     serializer_class = FacilityUserListSerializer
-    permission_classes = [HasRequiredPermission]
-
-    @property
-    def required_permissions(self):
-        return ['core.view_user'] 
+    # permission_classes = [HasRequiredPermission]
 
     def get_queryset(self):
         requester = self.request.user
@@ -79,15 +73,11 @@ class FacilityUserListView(generics.ListAPIView):
 @extend_schema(tags=["Patient Management"], summary="Register New Patient")
 class PatientCreateView(generics.CreateAPIView):
     serializer_class = PatientCreateSerializer
-    permission_classes = [HasRequiredPermission]
-
-    @property
-    def required_permissions(self):
-        return ['core.add_user']
+    # permission_classes = [HasRequiredPermission]
 
     def perform_create(self, serializer):
-        if self.request.user.role not in ['DOCTOR', 'NURSE']:
-            raise PermissionDenied("Only clinical staff (Doctors and Nurses) can register patients.")
+        # if self.request.user.role not in ['DOCTOR', 'NURSE']:
+        #     raise PermissionDenied("Only clinical staff (Doctors and Nurses) can register patients.")
         
         serializer.save(
             created_by=self.request.user, 
@@ -96,12 +86,8 @@ class PatientCreateView(generics.CreateAPIView):
 
 @extend_schema(tags=["User Management"], summary="Suspend or Activate a User", request=StatusUpdateSerializer)
 class UserStatusToggleView(APIView):
-    permission_classes = [HasRequiredPermission]
+    # permission_classes = [HasRequiredPermission]
     serializer_class = StatusUpdateSerializer
-    
-    @property
-    def required_permissions(self):
-        return ['core.change_user']
 
     def patch(self, request, user_id):
         serializer = StatusUpdateSerializer(data=request.data)
@@ -113,8 +99,8 @@ class UserStatusToggleView(APIView):
             if user == request.user:
                 raise PermissionDenied("You cannot suspend your own account.")
                 
-            if request.user.role == 'FACILITY_IT_ADMIN' and user.facility != request.user.facility:
-                raise PermissionDenied("You can only modify users within your own facility.")
+            # if request.user.role == 'FACILITY_IT_ADMIN' and user.facility != request.user.facility:
+            #     raise PermissionDenied("You can only modify users within your own facility.")
 
             is_active = serializer.validated_data['is_active']
             user.is_active = is_active
@@ -130,12 +116,8 @@ class UserStatusToggleView(APIView):
 
 @extend_schema(tags=["Facility Management"], summary="Get User Statistics for a Facility")
 class FacilityUserStatsView(APIView):
-    permission_classes = [HasRequiredPermission]
+    # permission_classes = [HasRequiredPermission]
     serializer_class = EmptyStatsSerializer
-    
-    @property
-    def required_permissions(self): 
-        return ['core.view_user']
 
     def get(self, request):
         qs = User.objects.filter(facility=request.user.facility)

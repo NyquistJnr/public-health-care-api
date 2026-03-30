@@ -3,8 +3,6 @@ from .models import AuditLog
 from .serializers import AuditLogSerializer
 from rest_framework import generics
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-from core.permissions import HasRequiredPermission
-from rest_framework.exceptions import PermissionDenied
 from django.db.models import Q
 
 @extend_schema(
@@ -20,21 +18,19 @@ from django.db.models import Q
 )
 class AuditLogListView(generics.ListAPIView):
     serializer_class = AuditLogSerializer
-    permission_classes = [HasRequiredPermission]
+    # permission_classes = [HasRequiredPermission]
 
-    @property
-    def required_permissions(self):
-        return ['core.view_user'] 
 
     def get_queryset(self):
         user = self.request.user
         
-        if user.role == 'ADMIN':
-            qs = AuditLog.objects.all()
-        elif user.role == 'FACILITY_IT_ADMIN':
-            qs = AuditLog.objects.filter(facility=user.facility)
-        else:
-            raise PermissionDenied("You do not have security clearance to view audit logs.")
+        qs = AuditLog.objects.all()
+        # if user.role == 'ADMIN':
+        #     qs = AuditLog.objects.all()
+        # elif user.role == 'FACILITY_IT_ADMIN':
+        #     qs = AuditLog.objects.filter(facility=user.facility)
+        # else:
+        #     raise PermissionDenied("You do not have security clearance to view audit logs.")
 
         action = self.request.query_params.get('action')
         if action:

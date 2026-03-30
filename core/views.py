@@ -18,7 +18,6 @@ from .serializers import (
     UserProfileSerializer
 )
 from .models import User
-from core.permissions import HasRequiredPermission
 from django.http import JsonResponse
 from rest_framework.permissions import IsAuthenticated
 
@@ -108,11 +107,7 @@ class ResetPasswordView(APIView):
 class UserInviteView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserInviteSerializer
-    permission_classes = [HasRequiredPermission]
-    
-    @property
-    def required_permissions(self):
-        return ['core.add_user']
+    # permission_classes = [HasRequiredPermission]
 
     def perform_create(self, serializer):
         inviter_facility = self.request.user.facility
