@@ -120,7 +120,8 @@ class FacilityUserStatsView(APIView):
     serializer_class = EmptyStatsSerializer
 
     def get(self, request):
-        qs = User.objects.filter(facility=request.user.facility)
+        base_qs = User.objects.filter(facility=request.user.facility)
+        qs = base_qs
 
         if request.user.role in ['FACILITY_IT_ADMIN', 'ADMIN']:
             qs = qs.exclude(role='PATIENT')
@@ -128,5 +129,7 @@ class FacilityUserStatsView(APIView):
         return Response({
             "total_users": qs.count(),
             "active_users": qs.filter(is_active=True).count(),
-            "suspended_users": qs.filter(is_active=False).count()
+            "suspended_users": qs.filter(is_active=False).count(),
+            "total_patients": base_qs.filter(role='PATIENT').count(),
+            "total_staffs": base_qs.exclude(role='PATIENT').count()
         })
