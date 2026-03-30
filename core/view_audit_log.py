@@ -1,9 +1,12 @@
 # core/view_audit_log.py
-from .models import AuditLog
+from .models import AuditLog, NotificationReadStatus
 from .serializers import AuditLogSerializer
 from rest_framework import generics
+from rest_framework.views import APIView
+from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-from django.db.models import Q
+from django.db.models import Q, Exists, OuterRef
+from django.shortcuts import get_object_or_404
 
 @extend_schema(
     tags=["System Administration"], 
@@ -105,5 +108,52 @@ class NotificationListView(generics.ListAPIView):
         if end_date:
             qs = qs.filter(timestamp__lte=end_date)
 
+        qs = qs.annotate(
+            is_read=Exists(
+                NotificationReadStatus.objects.filter(
+                    audit_log=OuterRef('pk'),
+                    user=user
+                )
+            )
+        )
+
         return qs
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # Calculate stats (do this before paginate_queryset to use the full queryset)
+        total_read = queryset.filter(is_read=True).count()
+        total_unread = queryset.filter(is_read=False).count()
+        
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            response = self.get_paginated_response(serializer.data)
+            response.data['stats'] = {
+                'read': total_read,
+                'unread': total_unread
+            }
+            return response
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'stats': {
+                'read': total_read,
+                'unread': total_unread
+            },
+            'results': serializer.data
+        })
+
+@extend_schema(
+    tags=["Notifications"], 
+    summary="Mark a Notification as Read",
+)
+class NotificationMarkReadView(APIView):
+    def patch(self, request, pk):
+        audit_log = get_object_or_404(AuditLog, pk=pk)
+        NotificationReadStatus.objects.get_or_create(
+            audit_log=audit_log,
+            user=request.user
+        )
+        return Response({"status": "success", "is_read": True})

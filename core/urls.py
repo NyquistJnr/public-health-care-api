@@ -10,7 +10,7 @@ from .views import (
     UserProfileView
 )
 from .view_facility import FacilityUserListView, PatientCreateView,FacilityUserStatsView, UserStatusToggleView
-from .view_audit_log import AuditLogListView, NotificationListView
+from .view_audit_log import AuditLogListView, NotificationListView, NotificationMarkReadView
 
 urlpatterns = [
     path('login/', CustomLoginView.as_view(), name='token_obtain_pair'),
@@ -25,5 +25,6 @@ urlpatterns = [
     path('users/<uuid:user_id>/toggle-status/', UserStatusToggleView.as_view(), name='user_toggle_status'),
     path('audit-logs/', AuditLogListView.as_view(), name='audit_logs'),
     path('notifications/', NotificationListView.as_view(), name='notifications'),
+    path('notifications/<uuid:pk>/mark-read/', NotificationMarkReadView.as_view(), name='notification_mark_read'),
     path('profile/', UserProfileView.as_view(), name='user_profile'),
 ]

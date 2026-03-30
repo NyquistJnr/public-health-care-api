@@ -130,13 +130,14 @@ class EmptyStatsSerializer(serializers.Serializer):
 
 class AuditLogSerializer(serializers.ModelSerializer):
     facility_name = serializers.CharField(source='facility.name', read_only=True, default="System Level")
+    is_read = serializers.BooleanField(read_only=True, default=False)
 
     class Meta:
         model = AuditLog
         fields = [
             'id', 'actor_name', 'facility', 'facility_name', 'action', 
             'module', 'ip_address', 'endpoint', 'target_object_id', 
-            'changes', 'timestamp'
+            'changes', 'timestamp', 'is_read'
         ]
 
 class UserProfileSerializer(serializers.ModelSerializer):

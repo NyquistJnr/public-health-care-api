@@ -202,3 +202,16 @@ class AuditLog(models.Model):
         
     def __str__(self):
         return f"{self.actor_name} -> {self.action} on {self.module} at {self.timestamp}"
+
+
+class NotificationReadStatus(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    audit_log = models.ForeignKey('AuditLog', on_delete=models.CASCADE, related_name='read_statuses')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    read_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('audit_log', 'user')
+        
+    def __str__(self):
+        return f"Read by {self.user} - {self.audit_log}"
