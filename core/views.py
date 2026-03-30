@@ -15,6 +15,7 @@ from .serializers import (
     ForgotPasswordSerializer, 
     ResetPasswordSerializer,
     UserInviteSerializer,
+    StateAdminUserInviteSerializer,
     UserProfileSerializer
 )
 from .models import User
@@ -112,6 +113,28 @@ class UserInviteView(generics.CreateAPIView):
     def perform_create(self, serializer):
         inviter_facility = self.request.user.facility
         user = serializer.save(created_by=self.request.user, facility=inviter_facility)
+        uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+        token = PasswordResetTokenGenerator().make_token(user)
+        
+        subject = "Welcome to the Public Health Care System"
+        message = f"Hello {user.first_name},\n\nAn administrator has created an account for you.\n\nTo set your password and activate your account, use the following details in your app:\n\nUID: {uidb64}\nToken: {token}\n\nRole: {user.role}"
+        
+        send_mail(
+            subject,
+            message,
+            "noreply@health.gov.ng",
+            [user.email],
+            fail_silently=True,
+        )
+
+@extend_schema(tags=["User Management"], summary="State Admin Invite New User to Facility")
+class StateAdminUserInviteView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    serializer_class = StateAdminUserInviteSerializer
+    # permission_classes = [HasRequiredPermission]
+    
+    def perform_create(self, serializer):
+        user = serializer.save(created_by=self.request.user)
         uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
         token = PasswordResetTokenGenerator().make_token(user)
         

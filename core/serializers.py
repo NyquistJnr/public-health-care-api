@@ -4,6 +4,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.models import Group
 from .models import User, AuditLog
+from facilities.models import Facility
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
     email = serializers.EmailField()
@@ -71,6 +72,17 @@ class UserInviteSerializer(serializers.ModelSerializer):
             pass 
 
         return user
+
+class StateAdminUserInviteSerializer(UserInviteSerializer):
+    facility_id = serializers.PrimaryKeyRelatedField(
+        queryset=Facility.objects.all(),
+        source='facility',
+        write_only=True
+    )
+
+    class Meta(UserInviteSerializer.Meta):
+        fields = UserInviteSerializer.Meta.fields + ['facility_id']
+
 
 class FacilityUserListSerializer(serializers.ModelSerializer):
     class Meta:
