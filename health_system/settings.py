@@ -39,7 +39,7 @@ SHARED_APPS = (
     'django_tenants',
     'tenants',
     'drf_spectacular',
-    
+    'corsheaders',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
@@ -62,6 +62,7 @@ TENANT_MODEL = "tenants.State"
 TENANT_DOMAIN_MODEL = "tenants.Domain"
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django_tenants.middleware.main.TenantMainMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -196,3 +197,5 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+CORS_ALLOW_ALL_ORIGINS = True
