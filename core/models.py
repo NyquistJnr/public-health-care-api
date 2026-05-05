@@ -215,3 +215,64 @@ class NotificationReadStatus(models.Model):
         
     def __str__(self):
         return f"Read by {self.user} - {self.audit_log}"
+
+class PatientProfile(BaseModel):
+    SEX_CHOICES = (
+        ('M', 'Male'),
+        ('F', 'Female'),
+        ('O', 'Other')
+    )
+    INSURANCE_STATUS_CHOICES = (
+        ('ACTIVE', 'Active'),
+        ('INACTIVE', 'Inactive'),
+        ('NONE', 'None')
+    )
+
+    # Core Links
+    user = models.OneToOneField('User', on_delete=models.CASCADE, related_name='patient_profile')
+    patient_id = models.CharField(max_length=50, unique=True, editable=False)
+    sequence_number = models.BigIntegerField(null=True, blank=True, editable=False, db_index=True)
+
+    # Demographics
+    sex = models.CharField(max_length=1, choices=SEX_CHOICES)
+    date_of_birth = models.DateField(help_text="Always use DOB, age is calculated dynamically.")
+    lga = models.CharField(max_length=100, blank=True, null=True)
+    ward = models.CharField(max_length=100, blank=True, null=True)
+
+    # Emergency Contacts
+    next_of_kin_name = models.CharField(max_length=255, blank=True, null=True)
+    next_of_kin_phone = models.CharField(max_length=20, blank=True, null=True)
+
+    # Insurance Information
+    insurance_status = models.CharField(max_length=20, choices=INSURANCE_STATUS_CHOICES, default='NONE')
+    insurance_provider = models.CharField(max_length=255, blank=True, null=True)
+    insurance_package = models.CharField(max_length=255, blank=True, null=True)
+    coverage_status = models.CharField(max_length=100, blank=True, null=True)
+
+    # Clinical Summaries
+    allergies = models.TextField(blank=True, null=True)
+    chronic_conditions = models.TextField(blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+        # Auto-generate Patient ID (e.g., PT-LAG-000001)
+        if not self.patient_id:
+            with transaction.atomic():
+                last_patient = PatientProfile.objects.select_for_update().order_by('-sequence_number').first()
+                self.sequence_number = (last_patient.sequence_number + 1) if last_patient else 1
+                state_code = connection.schema_name.upper()[:3] if connection.schema_name else 'UNK'
+                self.patient_id = f"PT-{state_code}-{self.sequence_number:06d}"
+        super().save(*args, **kwargs)
+
+    @property
+    def age(self):
+        """Calculates exact age based on current date and DOB."""
+        if self.date_of_birth:
+            today = timezone.now().date()
+            return today.year - self.date_of_birth.year - (
+                (today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day)
+            )
+        return None
+
+    def __str__(self):
+        return f"{self.patient_id} - {self.user.first_name} {self.user.last_name}"

@@ -1,9 +1,11 @@
 # core/serializers.py
 import uuid
+from django.db import transaction
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.models import Group
-from .models import User, AuditLog
+from .models import User, AuditLog, PatientProfile
 from facilities.models import Facility
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -94,18 +96,75 @@ class FacilityUserListSerializer(serializers.ModelSerializer):
             'is_active', 'suspended_at', 'last_login', 'created_at'
         ]
 
-class PatientCreateSerializer(serializers.ModelSerializer):
-    email = serializers.EmailField(required=False, allow_blank=True)
-    
+class PatientProfileSerializer(serializers.ModelSerializer):
+    age = serializers.IntegerField(read_only=True)
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PatientProfile
+        exclude = ['user', 'sequence_number']
+        read_only_fields = ['patient_id', 'created_at', 'updated_at', 'created_by']
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip()
+        return "System Process"
+
+class PatientSerializer(serializers.ModelSerializer):
+    """Used for listing and retrieving patient data"""
+    profile = PatientProfileSerializer(source='patient_profile', read_only=True)
+
     class Meta:
         model = User
         fields = [
             'id', 'first_name', 'last_name', 'middle_name', 
-            'email', 'phone_number', 'is_active'
+            'email', 'phone_number', 'address', 'state', 'is_active',
+            'profile', 'created_at', 'updated_at'
+        ]
+        read_only_fields = fields
+
+class PatientCreateSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(required=False, allow_blank=True)
+    sex = serializers.ChoiceField(choices=PatientProfile.SEX_CHOICES, write_only=True)
+    date_of_birth = serializers.DateField(write_only=True)
+    lga = serializers.CharField(max_length=100, write_only=True, required=False)
+    ward = serializers.CharField(max_length=100, write_only=True, required=False)
+    next_of_kin_name = serializers.CharField(max_length=255, write_only=True, required=False)
+    next_of_kin_phone = serializers.CharField(max_length=20, write_only=True, required=False)
+    insurance_status = serializers.ChoiceField(choices=PatientProfile.INSURANCE_STATUS_CHOICES, write_only=True, required=False)
+    insurance_provider = serializers.CharField(max_length=255, write_only=True, required=False)
+    insurance_package = serializers.CharField(max_length=255, write_only=True, required=False)
+    coverage_status = serializers.CharField(max_length=100, write_only=True, required=False)
+    allergies = serializers.CharField(write_only=True, required=False)
+    chronic_conditions = serializers.CharField(write_only=True, required=False)
+    notes = serializers.CharField(write_only=True, required=False)
+    profile = PatientProfileSerializer(source='patient_profile', read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'first_name', 'last_name', 'middle_name', 
+            'email', 'phone_number', 'address', 'state', 'is_active',
+            'sex', 'date_of_birth', 'lga', 'ward', 'next_of_kin_name', 'next_of_kin_phone',
+            'insurance_status', 'insurance_provider', 'insurance_package', 'coverage_status',
+            'allergies', 'chronic_conditions', 'notes',
+            'profile' 
         ]
         read_only_fields = ['id']
 
+    @transaction.atomic
     def create(self, validated_data):
+        profile_fields = [
+            'sex', 'date_of_birth', 'lga', 'ward', 'next_of_kin_name', 'next_of_kin_phone',
+            'insurance_status', 'insurance_provider', 'insurance_package', 'coverage_status',
+            'allergies', 'chronic_conditions', 'notes'
+        ]
+        profile_data = {}
+        for field in profile_fields:
+            if field in validated_data:
+                profile_data[field] = validated_data.pop(field)
+
         email = validated_data.get('email', '')
         username = email if email else f"patient_{uuid.uuid4().hex[:10]}"
         
@@ -114,12 +173,20 @@ class PatientCreateSerializer(serializers.ModelSerializer):
         user.role = 'PATIENT'
         user.set_unusable_password() 
         user.save()
-
         try:
             group = Group.objects.get(name='PATIENT')
             user.groups.add(group)
         except Group.DoesNotExist:
             pass 
+
+        request = self.context.get('request')
+        creator = request.user if request else None
+
+        PatientProfile.objects.create(
+            user=user,
+            created_by=creator,
+            **profile_data
+        )
 
         return user
 
@@ -168,3 +235,5 @@ class UserProfileSerializer(serializers.ModelSerializer):
             instance.username = email
             
         return super().update(instance, validated_data)
+
+

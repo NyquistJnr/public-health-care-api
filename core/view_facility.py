@@ -15,6 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import User
 from core.serializers import EmptyStatsSerializer
+from .serializers import PatientSerializer
 
 @extend_schema(
     tags=["Facility Management"], 
@@ -174,3 +175,46 @@ class SpecificFacilityUserListView(generics.ListAPIView):
             qs = qs.filter(is_active=is_active_bool)
 
         return qs.order_by('-created_at')
+
+
+
+@extend_schema(
+    tags=["Patient Management"], 
+    summary="List all patients in the facility",
+    parameters=[
+        OpenApiParameter(name='search', description='Search by name, email, phone, or Patient ID (e.g. PT-LAG-0001)', required=False, type=str),
+    ]
+)
+class PatientListView(generics.ListAPIView):
+    serializer_class = PatientSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        
+        qs = User.objects.filter(
+            role='PATIENT', 
+            facility=user.facility
+        ).select_related('patient_profile__created_by')
+
+        search = self.request.query_params.get('search')
+        if search:
+            qs = qs.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(email__icontains=search) |
+                Q(phone_number__icontains=search) |
+                Q(patient_profile__patient_id__icontains=search) 
+            )
+
+        return qs.order_by('-created_at')
+
+
+@extend_schema(
+    tags=["Patient Management"], 
+    summary="Get specific patient details by ID"
+)
+class PatientDetailView(generics.RetrieveAPIView):
+    serializer_class = PatientSerializer
+
+    def get_queryset(self):
+        return User.objects.filter(role='PATIENT', facility=self.request.user.facility)

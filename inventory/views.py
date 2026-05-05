@@ -56,6 +56,7 @@ def calculate_facility_drug_stats(facility):
     destroy=extend_schema(tags=["Drug Inventory"], summary="Remove drug from catalog"),
 )
 class DrugViewSet(viewsets.ModelViewSet):
+    queryset = Drug.objects.none()
 
     def get_serializer_class(self):
         if self.action == 'retrieve':

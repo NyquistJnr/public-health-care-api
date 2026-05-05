@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.db.models import Sum
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema_field
 from .models import Drug, DrugBatch, InventoryTransaction
 
 
@@ -19,6 +20,7 @@ class DrugSerializer(serializers.ModelSerializer):
         model = Drug
         fields = ['id', 'name', 'category', 'unit', 'global_threshold', 'total_stock', 'status', 'active_batches_count']
 
+    @extend_schema_field(serializers.IntegerField())
     def get_total_stock(self, obj):
         today = timezone.now().date()
         total = obj.batches.filter(
@@ -27,6 +29,7 @@ class DrugSerializer(serializers.ModelSerializer):
         ).aggregate(total=Sum('remaining_quantity'))['total']
         return total or 0
 
+    @extend_schema_field(serializers.CharField())
     def get_status(self, obj):
         stock = self.get_total_stock(obj)
         if stock == 0:
@@ -35,6 +38,7 @@ class DrugSerializer(serializers.ModelSerializer):
             return "LOW_STOCK"
         return "IN_STOCK"
 
+    @extend_schema_field(serializers.IntegerField())
     def get_active_batches_count(self, obj):
         today = timezone.now().date()
         return obj.batches.filter(
@@ -50,6 +54,7 @@ class DrugDetailSerializer(DrugSerializer):
     class Meta(DrugSerializer.Meta):
         fields = DrugSerializer.Meta.fields + ['active_batches']
 
+    @extend_schema_field(DrugBatchSerializer(many=True))
     def get_active_batches(self, obj):
         today = timezone.now().date()
         batches = obj.batches.filter(
