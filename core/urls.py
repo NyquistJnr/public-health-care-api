@@ -9,7 +9,7 @@ from .views import (
     ResetPasswordView,
     UserProfileView
 )
-from .view_facility import FacilityUserListView, PatientCreateView,FacilityUserStatsView, UserStatusToggleView
+from .view_facility import FacilityUserListView, PatientCreateView, FacilityUserStatsView, UserStatusToggleView, SpecificFacilityUserListView
 from .view_audit_log import AuditLogListView, NotificationListView, NotificationMarkReadView
 
 urlpatterns = [
@@ -22,6 +22,7 @@ urlpatterns = [
     path('facility-users/', FacilityUserListView.as_view(), name='facility_user_list'),
     path('patients/register/', PatientCreateView.as_view(), name='patient_register'),
     path('facility-users/stats/', FacilityUserStatsView.as_view(), name='facility_user_stats'),
+    path('facilities/<uuid:facility_id>/users/', SpecificFacilityUserListView.as_view(), name='specific_facility_users'),
     path('users/<uuid:user_id>/toggle-status/', UserStatusToggleView.as_view(), name='user_toggle_status'),
     path('audit-logs/', AuditLogListView.as_view(), name='audit_logs'),
     path('notifications/', NotificationListView.as_view(), name='notifications'),

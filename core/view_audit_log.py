@@ -1,10 +1,10 @@
 # core/view_audit_log.py
 from .models import AuditLog, NotificationReadStatus
 from .serializers import AuditLogSerializer
-from rest_framework import generics
+from rest_framework import generics, serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from django.db.models import Q, Exists, OuterRef
 from django.shortcuts import get_object_or_404
 
@@ -148,6 +148,16 @@ class NotificationListView(generics.ListAPIView):
 @extend_schema(
     tags=["Notifications"], 
     summary="Mark a Notification as Read",
+    request=None,  # Explicitly state that this PATCH request doesn't need a body
+    responses={
+        200: inline_serializer(
+            name='NotificationMarkReadResponse',
+            fields={
+                'status': serializers.CharField(),
+                'is_read': serializers.BooleanField(),
+            }
+        )
+    }
 )
 class NotificationMarkReadView(APIView):
     def patch(self, request, pk):

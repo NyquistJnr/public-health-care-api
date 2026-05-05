@@ -133,3 +133,44 @@ class FacilityUserStatsView(APIView):
             "total_patients": base_qs.filter(role='PATIENT').count(),
             "total_staffs": base_qs.exclude(role='PATIENT').count()
         })
+
+@extend_schema(
+    tags=["Facility Management"], 
+    summary="List Users for a Specific Facility",
+    parameters=[
+        OpenApiParameter(name='role', description='Filter by role (e.g., DOCTOR, NURSE, PATIENT) or use "STAFF" for everyone except patients.', required=False, type=str),
+        OpenApiParameter(name='search', description='Search by name, email, or phone', required=False, type=str),
+        OpenApiParameter(name='is_active', description='Filter by active status (true/false)', required=False, type=str),
+    ]
+)
+class SpecificFacilityUserListView(generics.ListAPIView):
+    serializer_class = FacilityUserListSerializer
+
+    def get_queryset(self):
+        facility_id = self.kwargs.get('facility_id')
+        requester = self.request.user
+
+        qs = User.objects.filter(facility_id=facility_id)
+        role = self.request.query_params.get('role')
+        if role:
+            role = role.upper()
+            if role == 'STAFF':
+                qs = qs.exclude(role='PATIENT')
+            else:
+                qs = qs.filter(role=role)
+
+        search = self.request.query_params.get('search')
+        if search:
+            qs = qs.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(email__icontains=search) |
+                Q(phone_number__icontains=search)
+            )
+
+        is_active_param = self.request.query_params.get('is_active')
+        if is_active_param is not None:
+            is_active_bool = is_active_param.lower() in ['true', '1', 't', 'y', 'yes']
+            qs = qs.filter(is_active=is_active_bool)
+
+        return qs.order_by('-created_at')
