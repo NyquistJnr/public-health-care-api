@@ -8,6 +8,7 @@ class Appointment(BaseModel):
         ('GENERAL', 'General Consultation'),
         ('FOLLOW_UP', 'Follow-up'),
         ('ANTENATAL', 'Antenatal Care'),
+        ('POSTNATAL', 'Postnatal Care'),
         ('IMMUNIZATION', 'Immunization'),
         ('EMERGENCY', 'Emergency'),
         ('OTHER', 'Other')
