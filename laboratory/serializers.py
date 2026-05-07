@@ -37,7 +37,7 @@ class LabRequestCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = LabRequest
-        fields = ['patient', 'appointment', 'requested_by', 'priority', 'clinical_notes', 'tests']
+        fields = ['appointment', 'requested_by', 'priority', 'clinical_notes', 'tests']
 
     @transaction.atomic
     def create(self, validated_data):
@@ -48,7 +48,10 @@ class LabRequestCreateSerializer(serializers.ModelSerializer):
         if not requested_by:
             requested_by = user
 
+        patient = validated_data['appointment'].patient
+
         lab_request = LabRequest.objects.create(
+            patient=patient,
             recorded_by=user,
             requested_by=requested_by,
             created_by=user,
