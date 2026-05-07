@@ -24,9 +24,11 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name='date', description='Filter by date (YYYY-MM-DD)', required=False, type=str),
-            OpenApiParameter(name='status', description='Filter by status (e.g., SCHEDULED)', required=False, type=str),
-            OpenApiParameter(name='patient_id', description='Filter by patient UUID', required=False, type=str),
+            OpenApiParameter(name='search', description='Search by Patient Name, Patient ID, or Appointment ID', required=False, type=str),
+            OpenApiParameter(name='start_date', description='Filter by start date (YYYY-MM-DD)', required=False, type=str),
+            OpenApiParameter(name='end_date', description='Filter by end date (YYYY-MM-DD)', required=False, type=str),
+            OpenApiParameter(name='visit_type', description='Filter by visit type (e.g., GENERAL, FOLLOW_UP)', required=False, type=str),
+            OpenApiParameter(name='status', description='Filter by status (e.g., SCHEDULED, COMPLETED)', required=False, type=str),
         ]
     )
     def list(self, request, *args, **kwargs):
@@ -35,16 +37,29 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = Appointment.objects.filter(facility=self.request.user.facility).select_related('patient', 'assigned_to', 'created_by')
 
-        apt_date = self.request.query_params.get('date')
+        search = self.request.query_params.get('search')
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        visit_type = self.request.query_params.get('visit_type')
         apt_status = self.request.query_params.get('status')
-        patient_id = self.request.query_params.get('patient_id')
 
-        if apt_date:
-            qs = qs.filter(appointment_date=apt_date)
+        if search:
+            qs = qs.filter(
+                Q(patient__first_name__icontains=search) |
+                Q(patient__last_name__icontains=search) |
+                Q(patient__patient_profile__patient_id__icontains=search) |
+                Q(appointment_id__icontains=search)
+            )
+
+        if start_date:
+            qs = qs.filter(appointment_date__gte=start_date)
+        if end_date:
+            qs = qs.filter(appointment_date__lte=end_date)
+
+        if visit_type:
+            qs = qs.filter(visit_type=visit_type.upper())
         if apt_status:
             qs = qs.filter(status=apt_status.upper())
-        if patient_id:
-            qs = qs.filter(patient__id=patient_id)
 
         return qs.order_by('appointment_date', 'appointment_time')
 
