@@ -8,6 +8,7 @@ class Facility(BaseModel):
     name = models.CharField(max_length=255)
     facility_type = models.CharField(max_length=100)
     lga = models.CharField(max_length=100)
+    ward = models.CharField(max_length=100, blank=True, null=True)
     address = models.TextField()
     level = models.CharField(max_length=100)
     manager_phone = models.CharField(max_length=20, null=True, blank=True)

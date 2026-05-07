@@ -14,9 +14,6 @@ class FacilityViewSet(viewsets.ModelViewSet):
     queryset = Facility.objects.all().order_by('-created_at')
     serializer_class = FacilitySerializer
     http_method_names = ['get', 'post', 'patch', 'delete'] 
-    # permission_classes = [HasRequiredPermission]
-    
-
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -28,8 +25,13 @@ class FacilityViewSet(viewsets.ModelViewSet):
         instance.delete(deleted_by=self.request.user)
 
     @extend_schema(
+        summary="List & Filter Facilities",
         parameters=[
-            OpenApiParameter(name='is_active', description='Filter by active status (true/false)', required=False, type=str)
+            OpenApiParameter(name='is_active', description='Filter by active status (true/false)', required=False, type=str),
+            OpenApiParameter(name='search', description='Search by facility name, code, or email', required=False, type=str),
+            OpenApiParameter(name='state', description='Filter by state name', required=False, type=str),
+            OpenApiParameter(name='lga', description='Filter by LGA', required=False, type=str),
+            OpenApiParameter(name='ward', description='Filter by Ward', required=False, type=str)
         ]
     )
     def list(self, request, *args, **kwargs):
@@ -39,9 +41,32 @@ class FacilityViewSet(viewsets.ModelViewSet):
         qs = super().get_queryset()
         
         is_active_param = self.request.query_params.get('is_active')
+        search = self.request.query_params.get('search')
+        state = self.request.query_params.get('state')
+        lga = self.request.query_params.get('lga')
+        ward = self.request.query_params.get('ward')
+
         if is_active_param is not None:
             is_active_bool = is_active_param.lower() in ['true', '1', 't', 'y', 'yes']
             qs = qs.filter(is_active=is_active_bool)
+
+        if state:
+            current_state = connection.tenant.name if hasattr(connection, 'tenant') else ""
+            if state.lower() != current_state.lower():
+                return qs.none()
+
+        if lga:
+            qs = qs.filter(lga__icontains=lga)
+        if ward:
+            qs = qs.filter(ward__icontains=ward)
+
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search) |
+                Q(code__icontains=search) |
+                Q(manager_email__icontains=search) |
+                Q(lga__icontains=search)
+            )
             
         return qs
 
@@ -49,8 +74,6 @@ class FacilityViewSet(viewsets.ModelViewSet):
 class FacilityStatusToggleView(APIView):
     # permission_classes = [HasRequiredPermission]
     serializer_class = StatusUpdateSerializer
-    
-
 
     def patch(self, request, facility_id):
         serializer = StatusUpdateSerializer(data=request.data)
@@ -74,8 +97,6 @@ class FacilityStatusToggleView(APIView):
 class StateFacilityStatsView(APIView):
     # permission_classes = [HasRequiredPermission]
     serializer_class = EmptyStatsSerializer
-    
-
 
     def get(self, request):
         return Response({

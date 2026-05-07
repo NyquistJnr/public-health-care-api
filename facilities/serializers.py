@@ -29,7 +29,7 @@ class FacilitySerializer(serializers.ModelSerializer):
     class Meta:
         model = Facility
         fields = [
-            'id', 'code', 'name', 'facility_type', 'state', 'lga', 'address', 'level',
+            'id', 'code', 'name', 'facility_type', 'state', 'lga','ward', 'address', 'level',
             'manager_first_name', 'manager_last_name', 'manager_email', 'manager_phone', 
             'it_admin_first_name', 'it_admin_last_name', 'it_admin_email', 'it_admin_phone', 
             'manager', 'it_admin', 'manager_name', 'it_admin_name', 'patient_count', 'staff_count', 
