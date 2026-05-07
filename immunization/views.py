@@ -1,20 +1,85 @@
 import uuid
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, serializers
 from rest_framework.response import Response
 from django.db import transaction
 from django.contrib.auth.models import Group
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer, OpenApiParameter
 from .models import ImmunizationRecord
-from .serializers import FastTrackImmunizationSerializer
+from .serializers import FastTrackImmunizationSerializer, ImmunizationReadSerializer, ImmunizationUpdateSerializer
 from core.models import User, PatientProfile
 from appointments.models import Appointment
 from inventory.models import DrugBatch, InventoryTransaction
 
 @extend_schema_view(
-    create=extend_schema(tags=["Immunization"], summary="Fast-Track Record Vaccine (Auto Patient/Appt/Inventory)"),
+    list=extend_schema(tags=["Immunization"], summary="List all facility immunizations"),
+    retrieve=extend_schema(tags=["Immunization"], summary="Get specific immunization record"),
+    update=extend_schema(tags=["Immunization"], summary="Update safe fields (Status, Location, Notes)"),
+    partial_update=extend_schema(tags=["Immunization"], summary="Partial update safe fields"),
+    destroy=extend_schema(tags=["Immunization"], summary="Soft-delete an immunization record"),
+    
+    # KEEP YOUR EXISTING CREATE SCHEMA EXACTLY AS IT IS:
+    create=extend_schema(
+        tags=["Immunization"], 
+        summary="Fast-Track Record Vaccine (Auto Patient/Appt/Inventory)",
+        request=FastTrackImmunizationSerializer,
+        responses={
+            201: inline_serializer(
+                name='ImmunizationSuccessResponse',
+                fields={
+                    'detail': serializers.CharField(),
+                    'patient_id': serializers.CharField(),
+                    'patient_name': serializers.CharField(),
+                    'vaccine': serializers.CharField(),
+                    'age_at_vaccination': serializers.CharField(),
+                }
+            )
+        }
+    ),
 )
-class ImmunizationViewSet(viewsets.ViewSet):
+class ImmunizationViewSet(viewsets.ModelViewSet):
+    queryset = ImmunizationRecord.objects.none()
 
+    def get_serializer_class(self):
+        """Dynamically switch serializers based on the requested action"""
+        if self.action == 'create':
+            return FastTrackImmunizationSerializer
+        elif self.action in ['update', 'partial_update']:
+            return ImmunizationUpdateSerializer
+        return ImmunizationReadSerializer
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='patient_id', description='Filter by Patient UUID', required=False, type=str),
+            OpenApiParameter(name='status', description='Filter by Status (COMPLETED, PENDING)', required=False, type=str),
+            OpenApiParameter(name='vaccine_id', description='Filter by Vaccine/Drug UUID', required=False, type=str),
+            OpenApiParameter(name='session_type', description='Filter by Session Type (FIXED, OUTREACH, MOBILE)', required=False, type=str),
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    def get_queryset(self):
+        """Ensure staff only see records from their own facility"""
+        qs = ImmunizationRecord.objects.filter(
+            facility=self.request.user.facility
+        ).select_related('patient', 'vaccine_given', 'administered_by')
+
+        patient_id = self.request.query_params.get('patient_id')
+        status_param = self.request.query_params.get('status')
+        vaccine_id = self.request.query_params.get('vaccine_id')
+        session_type = self.request.query_params.get('session_type')
+
+        if patient_id:
+            qs = qs.filter(patient__id=patient_id)
+        if status_param:
+            qs = qs.filter(status=status_param.upper())
+        if vaccine_id:
+            qs = qs.filter(vaccine_given__id=vaccine_id)
+        if session_type:
+            qs = qs.filter(session_type=session_type.upper())
+
+        return qs.order_by('-date_of_visit', '-created_at')
+    
     @transaction.atomic
     def create(self, request):
         serializer = FastTrackImmunizationSerializer(data=request.data)
@@ -101,3 +166,10 @@ class ImmunizationViewSet(viewsets.ViewSet):
             "vaccine": vaccine_drug.name,
             "age_at_vaccination": record.age_at_vaccination
         }, status=status.HTTP_201_CREATED)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+    def perform_destroy(self, instance):
+        """Utilizes your BaseModel's soft delete to maintain the clinical audit log"""
+        instance.delete(deleted_by=self.request.user)
