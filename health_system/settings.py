@@ -61,6 +61,7 @@ TENANT_APPS = (
     'laboratory',
     'prescriptions',
     'consultations',
+    'referrals',
 )
 
 INSTALLED_APPS = list(SHARED_APPS) + [app for app in TENANT_APPS if app not in SHARED_APPS]
@@ -208,6 +209,8 @@ SPECTACULAR_SETTINGS = {
         'LabTestStatusEnum': 'laboratory.models.LabTest.TEST_STATUS_CHOICES',
         'PrescriptionPriorityEnum': 'prescriptions.models.Prescription.PRIORITY_CHOICES',
         'PrescriptionStatusEnum': 'prescriptions.models.Prescription.STATUS_CHOICES',
+        'ReferralStatusEnum': 'referrals.models.Referral.STATUS_CHOICES',
+        'ReferralTypeEnum': 'referrals.models.Referral.TYPE_CHOICES',
     },
 }
 
