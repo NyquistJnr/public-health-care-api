@@ -228,10 +228,28 @@ class PatientProfile(BaseModel):
         ('NONE', 'None')
     )
 
+    BLOOD_GROUP_CHOICES = (
+        ('A+', 'A Positive'), ('A-', 'A Negative'),
+        ('B+', 'B Positive'), ('B-', 'B Negative'),
+        ('AB+', 'AB Positive'), ('AB-', 'AB Negative'),
+        ('O+', 'O Positive'), ('O-', 'O Negative'),
+        ('UNKNOWN', 'Unknown')
+    )
+    
+    GENOTYPE_CHOICES = (
+        ('AA', 'AA'), ('AS', 'AS'), ('SS', 'SS'), 
+        ('AC', 'AC'), ('SC', 'SC'), ('CC', 'CC'), 
+        ('UNKNOWN', 'Unknown')
+    )
+
     # Core Links
     user = models.OneToOneField('User', on_delete=models.CASCADE, related_name='patient_profile')
     patient_id = models.CharField(max_length=50, unique=True, editable=False)
     sequence_number = models.BigIntegerField(null=True, blank=True, editable=False, db_index=True)
+
+    # NEW: Biological Constants
+    blood_group = models.CharField(max_length=10, choices=BLOOD_GROUP_CHOICES, default='UNKNOWN')
+    genotype = models.CharField(max_length=10, choices=GENOTYPE_CHOICES, default='UNKNOWN')
 
     # Demographics
     sex = models.CharField(max_length=1, choices=SEX_CHOICES)
@@ -254,8 +272,23 @@ class PatientProfile(BaseModel):
     chronic_conditions = models.TextField(blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
 
+    mother = models.ForeignKey(
+        'core.User', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='children_profiles',
+        limit_choices_to={'role': 'PATIENT'}
+    )
+    birth_episode = models.ForeignKey(
+        'maternal_care.MaternalCareEpisode', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='newborns'
+    )
+
     def save(self, *args, **kwargs):
-        # Auto-generate Patient ID (e.g., PT-LAG-000001)
         if not self.patient_id:
             with transaction.atomic():
                 last_patient = PatientProfile.objects.select_for_update().order_by('-sequence_number').first()
@@ -273,6 +306,31 @@ class PatientProfile(BaseModel):
                 (today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day)
             )
         return None
+
+    @property
+    def age_group(self):
+        """Dynamically classifies patient into standard clinical age brackets."""
+        if not self.date_of_birth:
+            return "Unknown"
+            
+        today = timezone.now().date()
+        delta_days = (today - self.date_of_birth).days
+        age_years = self.age
+
+        if delta_days <= 28:
+            return "Neonate"
+        elif age_years < 1:
+            return "Infant"
+        elif 1 <= age_years <= 3:
+            return "Toddler"
+        elif 4 <= age_years <= 12:
+            return "Child"
+        elif 13 <= age_years <= 17:
+            return "Adolescent"
+        elif 18 <= age_years <= 64:
+            return "Adult"
+        else:
+            return "Senior"
 
     def __str__(self):
         return f"{self.patient_id} - {self.user.first_name} {self.user.last_name}"

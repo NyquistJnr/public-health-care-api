@@ -57,6 +57,7 @@ TENANT_APPS = (
     'inventory',
     'appointments',
     'immunization',
+    'maternal_care',
 )
 
 INSTALLED_APPS = list(SHARED_APPS) + [app for app in TENANT_APPS if app not in SHARED_APPS]

@@ -98,6 +98,7 @@ class FacilityUserListSerializer(serializers.ModelSerializer):
 
 class PatientProfileSerializer(serializers.ModelSerializer):
     age = serializers.IntegerField(read_only=True)
+    age_group = serializers.CharField(read_only=True)
     created_by_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -139,6 +140,8 @@ class PatientCreateSerializer(serializers.ModelSerializer):
     allergies = serializers.CharField(write_only=True, required=False)
     chronic_conditions = serializers.CharField(write_only=True, required=False)
     notes = serializers.CharField(write_only=True, required=False)
+    blood_group = serializers.ChoiceField(choices=PatientProfile.BLOOD_GROUP_CHOICES, write_only=True, required=False)
+    genotype = serializers.ChoiceField(choices=PatientProfile.GENOTYPE_CHOICES, write_only=True, required=False)
     profile = PatientProfileSerializer(source='patient_profile', read_only=True)
 
     class Meta:
@@ -149,6 +152,7 @@ class PatientCreateSerializer(serializers.ModelSerializer):
             'sex', 'date_of_birth', 'lga', 'ward', 'next_of_kin_name', 'next_of_kin_phone',
             'insurance_status', 'insurance_provider', 'insurance_package', 'coverage_status',
             'allergies', 'chronic_conditions', 'notes',
+            'blood_group', 'genotype',
             'profile' 
         ]
         read_only_fields = ['id']
@@ -158,7 +162,8 @@ class PatientCreateSerializer(serializers.ModelSerializer):
         profile_fields = [
             'sex', 'date_of_birth', 'lga', 'ward', 'next_of_kin_name', 'next_of_kin_phone',
             'insurance_status', 'insurance_provider', 'insurance_package', 'coverage_status',
-            'allergies', 'chronic_conditions', 'notes'
+            'allergies', 'chronic_conditions', 'notes',
+            'blood_group', 'genotype'
         ]
         profile_data = {}
         for field in profile_fields:

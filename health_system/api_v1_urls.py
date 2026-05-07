@@ -8,6 +8,7 @@ urlpatterns = [
     path('inventory/', include('inventory.urls')),
     path('appointments/', include('appointments.urls')),
     path('immunization/', include('immunization.urls')),
+    path('maternal-care/', include('maternal_care.urls')),
     
     # OpenAPI Schema Generation, Swagger & ReDoc UI 
     path('schema/', SpectacularAPIView.as_view(), name='schema'),
