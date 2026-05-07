@@ -120,12 +120,16 @@ class BaseModel(models.Model):
 
 class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    
+
     ROLE_CHOICES = (
         ('ADMIN', 'State Admin'),
         ('FACILITY_IT_ADMIN', 'Facility IT Admin'),
+        ('OFFICER_IN_CHARGE', 'Officer In Charge (OIC)'),
         ('DOCTOR', 'Doctor'),
+        ('PHARMACIST', 'Pharmacist'),
+        ('LAB_TECHNICIAN', 'Laboratory Technician'),
         ('NURSE', 'Nurse'),
+        ('CHEW', 'Community Health Extension Worker'),
         ('PATIENT', 'Patient'),
     )
     

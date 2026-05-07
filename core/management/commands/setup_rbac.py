@@ -18,20 +18,39 @@ class Command(BaseCommand):
                 'view_facility', 'change_facility',
                 'add_user', 'change_user', 'view_user'
             ],
+            'OFFICER_IN_CHARGE': [
+                'view_facility', 'view_user', 'view_facility_stats',
+                'view_patient_profile', 'view_audit_log', 'view_inventory_stats'
+            ],
             'DOCTOR': [
                 'view_facility',
                 'view_patient_profile', 'view_patient_history',
                 'add_medical_record', 'view_medical_record', 'change_own_medical_record',
                 'add_prescription', 'view_prescription', 'cancel_prescription',
-                'view_appointment', 'change_appointment_status', 'add_appointment_note',
-                'add_lab_order', 'view_lab_result'
+                'view_appointment', 'change_appointment_status',
+                'add_lab_order', 'view_lab_result', 'add_referral'
+            ],
+            'PHARMACIST': [
+                'view_facility', 'view_patient_profile',
+                'view_prescription', 'dispense_prescription',
+                'view_inventory', 'add_inventory', 'change_inventory'
+            ],
+            'LAB_TECHNICIAN': [
+                'view_facility', 'view_patient_profile',
+                'view_lab_request', 'change_lab_test', 'submit_lab_result'
             ],
             'NURSE': [
                 'view_facility',
                 'view_patient_profile', 'view_patient_history',
                 'view_medical_record', 'add_nursing_note',
-                'view_prescription', 'dispense_prescription',
-                'view_appointment', 'view_lab_result'
+                'view_appointment', 'add_vitals',
+                'add_immunization', 'view_immunization',
+                'add_anc_visit', 'add_pnc_visit'
+            ],
+            'CHEW': [
+                'view_facility', 'view_patient_profile', 
+                'view_appointment', 'add_vitals', 
+                'add_immunization', 'view_immunization'
             ],
             'PATIENT': [
                 'view_own_record', 'view_own_prescription', 'add_own_appointment', 'cancel_own_appointment'

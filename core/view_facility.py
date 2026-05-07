@@ -36,7 +36,7 @@ class FacilityUserListView(generics.ListAPIView):
         requester = self.request.user
         
         qs = User.objects.filter(facility=requester.facility)
-        if requester.role in ['FACILITY_IT_ADMIN', 'ADMIN']:
+        if requester.role in ['FACILITY_IT_ADMIN', 'ADMIN', 'OFFICER_IN_CHARGE']:
             qs = qs.exclude(role='PATIENT')
 
         search = self.request.query_params.get('search')
@@ -124,7 +124,7 @@ class FacilityUserStatsView(APIView):
         base_qs = User.objects.filter(facility=request.user.facility)
         qs = base_qs
 
-        if request.user.role in ['FACILITY_IT_ADMIN', 'ADMIN']:
+        if request.user.role in ['FACILITY_IT_ADMIN', 'ADMIN', 'OFFICER_IN_CHARGE']:
             qs = qs.exclude(role='PATIENT')
 
         return Response({
