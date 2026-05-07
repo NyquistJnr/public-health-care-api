@@ -202,6 +202,8 @@ SPECTACULAR_SETTINGS = {
         'ImmunizationStatusEnum': 'immunization.models.ImmunizationRecord.STATUS_CHOICES',
         'ImmunizationSessionEnum': 'immunization.models.ImmunizationRecord.SESSION_TYPES',
         'PatientSexEnum': 'core.models.PatientProfile.SEX_CHOICES',
+        'LabRequestPriorityEnum': 'laboratory.models.LabRequest.PRIORITY_CHOICES',
+        'LabTestStatusEnum': 'laboratory.models.LabTest.TEST_STATUS_CHOICES',
     },
 }
 

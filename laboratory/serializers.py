@@ -72,3 +72,28 @@ class LabResultSubmitSerializer(serializers.ModelSerializer):
         if not attrs.get('result_value'):
             raise serializers.ValidationError({"result_value": "A result value is required to submit a result."})
         return attrs
+
+class LabTestStatsResponseSerializer(serializers.Serializer):
+    pending_tests = serializers.IntegerField()
+    in_progress = serializers.IntegerField()
+    completed = serializers.IntegerField()
+
+class LabRequestStatsResponseSerializer(serializers.Serializer):
+    pending_requests = serializers.IntegerField()
+    in_progress = serializers.IntegerField()
+    completed = serializers.IntegerField()
+
+class InventoryAlertItemSerializer(serializers.Serializer):
+    item_id = serializers.UUIDField()
+    item_name = serializers.CharField()
+    category = serializers.CharField()
+    current_stock = serializers.IntegerField()
+    threshold = serializers.IntegerField()
+    unit = serializers.CharField()
+
+class OverallLabStatsResponseSerializer(serializers.Serializer):
+    pending_lab_requests = serializers.IntegerField()
+    in_progress = serializers.IntegerField()
+    completed = serializers.IntegerField()
+    inventory_alert_count = serializers.IntegerField()
+    inventory_alerts = InventoryAlertItemSerializer(many=True)
