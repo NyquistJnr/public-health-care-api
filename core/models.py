@@ -247,7 +247,7 @@ class PatientProfile(BaseModel):
     patient_id = models.CharField(max_length=50, unique=True, editable=False)
     sequence_number = models.BigIntegerField(null=True, blank=True, editable=False, db_index=True)
 
-    # NEW: Biological Constants
+    # Biological Constants
     blood_group = models.CharField(max_length=10, choices=BLOOD_GROUP_CHOICES, default='UNKNOWN')
     genotype = models.CharField(max_length=10, choices=GENOTYPE_CHOICES, default='UNKNOWN')
 

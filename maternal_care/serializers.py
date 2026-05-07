@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import MaternalCareEpisode, ANCVisit, PNCVisit, PNCNewbornAssessment
+from core.models import PatientProfile
 
 class MaternalCareEpisodeSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source='patient.get_full_name', read_only=True)
@@ -47,3 +48,15 @@ class PNCVisitSerializer(serializers.ModelSerializer):
             'newborn_assessments', 'created_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
+
+class NewbornRegistrationSerializer(serializers.Serializer):
+    """Details for a single newborn"""
+    first_name = serializers.CharField(max_length=150, help_text="e.g., Baby 1, or actual name if given")
+    last_name = serializers.CharField(max_length=150, help_text="Usually the father's or mother's surname")
+    sex = serializers.ChoiceField(choices=PatientProfile.SEX_CHOICES)
+    weight_kg = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
+
+class RecordDeliverySerializer(serializers.Serializer):
+    """Payload for recording a delivery and auto-registering the babies"""
+    delivery_date = serializers.DateField()
+    babies = NewbornRegistrationSerializer(many=True, help_text="List of babies born (handles twins/triplets)")
