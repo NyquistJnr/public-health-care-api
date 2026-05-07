@@ -89,9 +89,62 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             "detail": f"Appointment status updated to {new_status}.",
             "status": new_status
         }, status=drf_status.HTTP_200_OK)
+    
+    @extend_schema(
+        tags=["Appointments"], 
+        summary="Get My Assigned Appointments (Staff Dashboard)",
+        parameters=[
+            OpenApiParameter(name='search', description='Search by Patient Name, ID, or Appointment ID', required=False, type=str),
+            OpenApiParameter(name='start_date', description='Filter by start date (YYYY-MM-DD)', required=False, type=str),
+            OpenApiParameter(name='end_date', description='Filter by end date (YYYY-MM-DD)', required=False, type=str),
+            OpenApiParameter(name='visit_type', description='Filter by visit type', required=False, type=str),
+            OpenApiParameter(name='status', description='Filter by status', required=False, type=str),
+        ]
+    )
+    @action(detail=False, methods=['get'], url_path='my-appointments')
+    def my_appointments(self, request):
+        """
+        Returns a paginated list of appointments specifically assigned to the 
+        currently logged-in staff member (Doctor/Nurse).
+        """
+        qs = Appointment.objects.filter(
+            facility=request.user.facility,
+            assigned_to=request.user
+        ).select_related('patient', 'assigned_to', 'created_by')
 
+        search = request.query_params.get('search')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        visit_type = request.query_params.get('visit_type')
+        apt_status = request.query_params.get('status')
 
-### Vitasl ViewSet ###
+        if search:
+            qs = qs.filter(
+                Q(patient__first_name__icontains=search) |
+                Q(patient__last_name__icontains=search) |
+                Q(patient__patient_profile__patient_id__icontains=search) |
+                Q(appointment_id__icontains=search)
+            )
+
+        if start_date:
+            qs = qs.filter(appointment_date__gte=start_date)
+        if end_date:
+            qs = qs.filter(appointment_date__lte=end_date)
+
+        if visit_type:
+            qs = qs.filter(visit_type=visit_type.upper())
+        if apt_status:
+            qs = qs.filter(status=apt_status.upper())
+
+        qs = qs.order_by('appointment_date', 'appointment_time')
+
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
 
 @extend_schema_view(
     list=extend_schema(tags=["Patient Vitals"], summary="List all facility vitals"),
