@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
-from .models import Appointment
-from core.models import User
+from .models import Appointment, Vitals
 
 class AppointmentReadSerializer(serializers.ModelSerializer):
     """Used for returning data to the frontend (List & Retrieve)"""
@@ -67,3 +66,46 @@ class AppointmentWriteSerializer(serializers.ModelSerializer):
 
 class AppointmentStatusUpdateSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=Appointment.STATUS_CHOICES)
+
+
+
+#### Vitals Serializers ####
+
+class VitalsSerializer(serializers.ModelSerializer):
+    bmi = serializers.SerializerMethodField()
+    age = serializers.SerializerMethodField()
+    visit_type = serializers.CharField(source='appointment.visit_type', read_only=True)
+    patient_display_id = serializers.CharField(source='patient.patient_profile.patient_id', read_only=True)
+    recorded_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Vitals
+        fields = [
+            'id', 'vital_id', 'appointment', 'patient_display_id', 'visit_type', 'age',
+            'temperature', 'blood_pressure', 'pulse_rate', 'respiratory_rate', 
+            'weight_kg', 'height_cm', 'bmi', 'spo2', 'notes', 
+            'created_by', 'recorded_by_name', 'created_at'
+        ]
+        read_only_fields = ['id', 'vital_id', 'created_by', 'created_at']
+
+    @extend_schema_field(serializers.FloatField(allow_null=True))
+    def get_bmi(self, obj):
+        return obj.bmi
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_age(self, obj):
+        return obj.age_at_visit
+
+    @extend_schema_field(serializers.CharField())
+    def get_recorded_by_name(self, obj):
+        if obj.created_by:
+            return f"{obj.created_by.first_name} {obj.created_by.last_name} ({obj.created_by.get_role_display()})"
+        return "System"
+
+    def validate(self, attrs):
+        appointment = attrs.get('appointment')
+        
+        if appointment and appointment.status in ['CANCELLED', 'NO_SHOW']:
+            raise serializers.ValidationError({"appointment": "Cannot record vitals for a cancelled or no-show appointment."})
+            
+        return attrs

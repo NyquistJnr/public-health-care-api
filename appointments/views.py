@@ -3,8 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 from django.db.models import Q
-from .models import Appointment
-from .serializers import AppointmentReadSerializer, AppointmentWriteSerializer, AppointmentStatusUpdateSerializer
+from .models import Appointment, Vitals
+from .serializers import AppointmentReadSerializer, AppointmentWriteSerializer, AppointmentStatusUpdateSerializer, VitalsSerializer
 
 @extend_schema_view(
     list=extend_schema(tags=["Appointments"], summary="List all facility appointments"),
@@ -89,3 +89,47 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             "detail": f"Appointment status updated to {new_status}.",
             "status": new_status
         }, status=drf_status.HTTP_200_OK)
+
+
+### Vitasl ViewSet ###
+
+@extend_schema_view(
+    list=extend_schema(tags=["Patient Vitals"], summary="List all facility vitals"),
+    create=extend_schema(tags=["Patient Vitals"], summary="Record new patient vitals"),
+    retrieve=extend_schema(tags=["Patient Vitals"], summary="Get specific vital record"),
+    update=extend_schema(tags=["Patient Vitals"], summary="Update vital record"),
+    partial_update=extend_schema(tags=["Patient Vitals"], summary="Partial update vitals"),
+    destroy=extend_schema(tags=["Patient Vitals"], summary="Delete vital record"),
+)
+class VitalsViewSet(viewsets.ModelViewSet):
+    queryset = Vitals.objects.none()
+    serializer_class = VitalsSerializer
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name='appointment_id', description='Filter by appointment UUID', required=False, type=str),
+            OpenApiParameter(name='patient_id', description='Filter by patient UUID', required=False, type=str),
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    def get_queryset(self):
+        qs = Vitals.objects.filter(appointment__facility=self.request.user.facility)
+
+        apt_id = self.request.query_params.get('appointment_id')
+        pat_id = self.request.query_params.get('patient_id')
+
+        if apt_id:
+            qs = qs.filter(appointment_id=apt_id)
+        if pat_id:
+            qs = qs.filter(patient_id=pat_id)
+
+        return qs.order_by('-created_at')
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
