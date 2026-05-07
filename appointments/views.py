@@ -27,8 +27,8 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             OpenApiParameter(name='search', description='Search by Patient Name, Patient ID, or Appointment ID', required=False, type=str),
             OpenApiParameter(name='start_date', description='Filter by start date (YYYY-MM-DD)', required=False, type=str),
             OpenApiParameter(name='end_date', description='Filter by end date (YYYY-MM-DD)', required=False, type=str),
-            OpenApiParameter(name='visit_type', description='Filter by visit type (e.g., GENERAL, FOLLOW_UP)', required=False, type=str),
-            OpenApiParameter(name='status', description='Filter by status (e.g., SCHEDULED, COMPLETED)', required=False, type=str),
+            OpenApiParameter(name='visit_type', description='Filter by visit type (e.g., GENERAL, FOLLOW_UP, ANTENATAL, IMMUNIZATION, EMERGENCY, OTHER)', required=False, type=str),
+            OpenApiParameter(name='status', description='Filter by status (e.g., SCHEDULED, COMPLETED, IN_PROGRESS, CANCELLED, NO_SHOW)', required=False, type=str),
         ]
     )
     def list(self, request, *args, **kwargs):
