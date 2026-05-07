@@ -56,7 +56,7 @@ class PNCNewbornAssessmentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return PNCNewbornAssessment.objects.filter(
             pnc_visit__appointment__facility=self.request.user.facility
-        )
+        ).order_by('-created_at')
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
