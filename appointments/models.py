@@ -12,13 +12,21 @@ class Appointment(BaseModel):
         ('EMERGENCY', 'Emergency'),
         ('OTHER', 'Other')
     )
-    
+
     STATUS_CHOICES = (
         ('SCHEDULED', 'Scheduled'),
-        ('IN_PROGRESS', 'In Progress'),
+        ('ARRIVED', 'Arrived - Pending Vitals'),
+        ('VITALS_DONE', 'Vitals Done - Waiting for Doctor'),
+        ('IN_CONSULTATION', 'In Consultation'),
         ('COMPLETED', 'Completed'),
         ('CANCELLED', 'Cancelled'),
         ('NO_SHOW', 'No Show')
+    )
+
+    PRIORITY_CHOICES = (
+        ('NORMAL', 'Normal'),
+        ('URGENT', 'Urgent'),
+        ('CRITICAL', 'Critical')
     )
 
     facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='appointments')
@@ -31,6 +39,7 @@ class Appointment(BaseModel):
     appointment_time = models.TimeField()
     visit_type = models.CharField(max_length=20, choices=VISIT_TYPES, default='GENERAL')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='SCHEDULED')
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='NORMAL')
 
     reason_for_visit = models.TextField()
     notes = models.TextField(blank=True, null=True)
@@ -68,6 +77,30 @@ class Vitals(BaseModel):
     
     notes = models.TextField(blank=True, null=True)
 
+    def get_triage_priority(self):
+        sys, dia = 0, 0
+        if self.blood_pressure:
+            try:
+                sys, dia = map(int, self.blood_pressure.split('/'))
+            except ValueError:
+                pass
+
+        if (self.spo2 and self.spo2 <= 90) or \
+           (self.temperature and (self.temperature >= 39.5 or self.temperature <= 35.0)) or \
+           (self.pulse_rate and (self.pulse_rate >= 130 or self.pulse_rate <= 40)) or \
+           (sys >= 180 or dia >= 120) or \
+           (self.respiratory_rate and (self.respiratory_rate >= 25 or self.respiratory_rate <= 8)):
+            return 'CRITICAL'
+            
+        if (self.spo2 and self.spo2 <= 94) or \
+           (self.temperature and self.temperature >= 38.5) or \
+           (self.pulse_rate and (self.pulse_rate >= 110 or self.pulse_rate <= 50)) or \
+           (sys >= 160 or dia >= 100) or \
+           (self.respiratory_rate and (self.respiratory_rate >= 21 or self.respiratory_rate <= 11)):
+            return 'URGENT'
+
+        return 'NORMAL'
+
     def save(self, *args, **kwargs):
         if not self.vital_id:
             with transaction.atomic():
@@ -80,6 +113,15 @@ class Vitals(BaseModel):
             self.patient = self.appointment.patient
             
         super().save(*args, **kwargs)
+
+        if self.appointment:
+            calculated_priority = self.get_triage_priority()
+            self.appointment.priority = calculated_priority
+            
+            if self.appointment.status in ['SCHEDULED', 'ARRIVED']:
+                self.appointment.status = 'VITALS_DONE'
+                
+            self.appointment.save(update_fields=['priority', 'status', 'updated_at'])
 
     @property
     def bmi(self):

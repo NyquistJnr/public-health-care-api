@@ -128,8 +128,11 @@ class VitalsViewSet(viewsets.ModelViewSet):
         return qs.order_by('-created_at')
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        appointment = serializer.validated_data.get('appointment')
+        serializer.save(
+            created_by=self.request.user,
+            patient=appointment.patient if appointment else None
+        )
 
     def perform_update(self, serializer):
         serializer.save(updated_by=self.request.user)
-
