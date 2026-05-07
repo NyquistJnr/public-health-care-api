@@ -59,6 +59,7 @@ TENANT_APPS = (
     'immunization',
     'maternal_care',
     'laboratory',
+    'prescriptions',
 )
 
 INSTALLED_APPS = list(SHARED_APPS) + [app for app in TENANT_APPS if app not in SHARED_APPS]
@@ -204,6 +205,8 @@ SPECTACULAR_SETTINGS = {
         'PatientSexEnum': 'core.models.PatientProfile.SEX_CHOICES',
         'LabRequestPriorityEnum': 'laboratory.models.LabRequest.PRIORITY_CHOICES',
         'LabTestStatusEnum': 'laboratory.models.LabTest.TEST_STATUS_CHOICES',
+        'PrescriptionPriorityEnum': 'prescriptions.models.Prescription.PRIORITY_CHOICES',
+        'PrescriptionStatusEnum': 'prescriptions.models.Prescription.STATUS_CHOICES',
     },
 }
 
