@@ -194,6 +194,13 @@ SPECTACULAR_SETTINGS = {
         'docExpansion': 'none', 
         'defaultModelsExpandDepth': -1,
     },
+    'ENUM_NAME_OVERRIDES': {
+        'AppointmentStatusEnum': 'appointments.models.Appointment.STATUS_CHOICES',
+        'AppointmentPriorityEnum': 'appointments.models.Appointment.PRIORITY_CHOICES',
+        'ImmunizationStatusEnum': 'immunization.models.ImmunizationRecord.STATUS_CHOICES',
+        'ImmunizationSessionEnum': 'immunization.models.ImmunizationRecord.SESSION_TYPES',
+        'PatientSexEnum': 'core.models.PatientProfile.SEX_CHOICES',
+    },
 }
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')

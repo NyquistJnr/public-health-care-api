@@ -9,6 +9,7 @@ from .serializers import FastTrackImmunizationSerializer, ImmunizationReadSerial
 from core.models import User, PatientProfile
 from appointments.models import Appointment
 from inventory.models import DrugBatch, InventoryTransaction
+from django.db.models import Q
 
 @extend_schema_view(
     list=extend_schema(tags=["Immunization"], summary="List all facility immunizations"),
@@ -17,7 +18,6 @@ from inventory.models import DrugBatch, InventoryTransaction
     partial_update=extend_schema(tags=["Immunization"], summary="Partial update safe fields"),
     destroy=extend_schema(tags=["Immunization"], summary="Soft-delete an immunization record"),
     
-    # KEEP YOUR EXISTING CREATE SCHEMA EXACTLY AS IT IS:
     create=extend_schema(
         tags=["Immunization"], 
         summary="Fast-Track Record Vaccine (Auto Patient/Appt/Inventory)",
@@ -49,10 +49,13 @@ class ImmunizationViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name='patient_id', description='Filter by Patient UUID', required=False, type=str),
+            OpenApiParameter(name='patient_id', description='Filter by exact Patient UUID', required=False, type=str),
             OpenApiParameter(name='status', description='Filter by Status (COMPLETED, PENDING)', required=False, type=str),
             OpenApiParameter(name='vaccine_id', description='Filter by Vaccine/Drug UUID', required=False, type=str),
             OpenApiParameter(name='session_type', description='Filter by Session Type (FIXED, OUTREACH, MOBILE)', required=False, type=str),
+            OpenApiParameter(name='start_date', description='Filter from this visit date (YYYY-MM-DD)', required=False, type=str),
+            OpenApiParameter(name='end_date', description='Filter up to this visit date (YYYY-MM-DD)', required=False, type=str),
+            OpenApiParameter(name='search', description='Search by Patient Name or PT-ID', required=False, type=str),
         ]
     )
     def list(self, request, *args, **kwargs):
@@ -68,6 +71,9 @@ class ImmunizationViewSet(viewsets.ModelViewSet):
         status_param = self.request.query_params.get('status')
         vaccine_id = self.request.query_params.get('vaccine_id')
         session_type = self.request.query_params.get('session_type')
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        search = self.request.query_params.get('search')
 
         if patient_id:
             qs = qs.filter(patient__id=patient_id)
@@ -77,6 +83,18 @@ class ImmunizationViewSet(viewsets.ModelViewSet):
             qs = qs.filter(vaccine_given__id=vaccine_id)
         if session_type:
             qs = qs.filter(session_type=session_type.upper())
+
+        if start_date:
+            qs = qs.filter(date_of_visit__gte=start_date)
+        if end_date:
+            qs = qs.filter(date_of_visit__lte=end_date)
+            
+        if search:
+            qs = qs.filter(
+                Q(patient__first_name__icontains=search) |
+                Q(patient__last_name__icontains=search) |
+                Q(patient__patient_profile__patient_id__icontains=search)
+            )
 
         return qs.order_by('-date_of_visit', '-created_at')
     
