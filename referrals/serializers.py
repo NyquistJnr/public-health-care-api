@@ -10,6 +10,7 @@ class ReferralReadSerializer(serializers.ModelSerializer):
     referring_facility_name = serializers.CharField(source='referring_facility.name', read_only=True)
     receiving_facility_name = serializers.CharField(source='receiving_facility.name', read_only=True)
     referred_by_name = serializers.CharField(source='referred_by.get_full_name', read_only=True)
+    direction = serializers.SerializerMethodField()
 
     class Meta:
         model = Referral
@@ -17,8 +18,18 @@ class ReferralReadSerializer(serializers.ModelSerializer):
             'id', 'referral_id', 'appointment', 'patient', 'patient_name', 'patient_display_id',
             'referring_facility', 'referring_facility_name', 'receiving_facility', 'receiving_facility_name',
             'referred_by', 'referred_by_name', 'referral_type', 'reason_for_referral', 
-            'clinical_summary', 'status', 'created_at'
+            'clinical_summary', 'status', 'created_at', 'direction'
         ]
+
+    def get_direction(self, obj):
+        request = self.context.get('request')
+        if request and hasattr(request.user, 'facility'):
+            user_facility = request.user.facility
+            if obj.receiving_facility == user_facility:
+                return 'inbound'
+            elif obj.referring_facility == user_facility:
+                return 'outbound'
+        return 'unknown'
 
 class ReferralCreateSerializer(serializers.ModelSerializer):
     class Meta:
