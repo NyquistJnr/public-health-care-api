@@ -77,13 +77,14 @@ class VitalsSerializer(serializers.ModelSerializer):
     visit_type = serializers.CharField(source='appointment.visit_type', read_only=True)
     appointment_status = serializers.CharField(source='appointment.status', read_only=True)
     appointment_priority = serializers.CharField(source='appointment.priority', read_only=True)
+    patient_name = serializers.CharField(source='patient.get_full_name', read_only=True)
     patient_display_id = serializers.CharField(source='patient.patient_profile.patient_id', read_only=True)
     recorded_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Vitals
         fields = [
-            'id', 'vital_id', 'appointment', 'patient_display_id', 
+            'id', 'vital_id', 'appointment', 'patient_display_id', 'patient_name', 
             'visit_type', 'appointment_status', 'appointment_priority', 'age',
             'temperature', 'blood_pressure', 'pulse_rate', 'respiratory_rate', 
             'weight_kg', 'height_cm', 'bmi', 'spo2', 'notes', 
