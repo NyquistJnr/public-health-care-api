@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import User
 from core.serializers import EmptyStatsSerializer
-from .serializers import PatientSerializer
+from .serializers import PatientSerializer, PatientUpdateSerializer
 
 @extend_schema(
     tags=["Facility Management"], 
@@ -213,8 +213,11 @@ class PatientListView(generics.ListAPIView):
     tags=["Patient Management"], 
     summary="Get specific patient details by ID"
 )
-class PatientDetailView(generics.RetrieveAPIView):
-    serializer_class = PatientSerializer
-
+class PatientDetailView(generics.RetrieveUpdateAPIView):
     def get_queryset(self):
         return User.objects.filter(role='PATIENT', facility=self.request.user.facility)
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return PatientUpdateSerializer
+        return PatientSerializer

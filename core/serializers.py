@@ -241,4 +241,69 @@ class UserProfileSerializer(serializers.ModelSerializer):
             
         return super().update(instance, validated_data)
 
+class PatientUpdateSerializer(serializers.ModelSerializer):
+    """Handles partial updates for both User and PatientProfile simultaneously"""
+    
+    email = serializers.EmailField(required=False, allow_blank=True)
+    sex = serializers.ChoiceField(choices=PatientProfile.SEX_CHOICES, required=False)
+    date_of_birth = serializers.DateField(required=False)
+    lga = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    ward = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    next_of_kin_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    next_of_kin_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    insurance_status = serializers.ChoiceField(choices=PatientProfile.INSURANCE_STATUS_CHOICES, required=False)
+    insurance_provider = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    insurance_package = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    coverage_status = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    allergies = serializers.CharField(required=False, allow_blank=True)
+    chronic_conditions = serializers.CharField(required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    blood_group = serializers.ChoiceField(choices=PatientProfile.BLOOD_GROUP_CHOICES, required=False)
+    genotype = serializers.ChoiceField(choices=PatientProfile.GENOTYPE_CHOICES, required=False)
+    
+    profile = PatientProfileSerializer(source='patient_profile', read_only=True)
 
+    class Meta:
+        model = User
+        fields = [
+            'id', 'first_name', 'last_name', 'middle_name', 
+            'email', 'phone_number', 'address', 'state', 'is_active',
+            'sex', 'date_of_birth', 'lga', 'ward', 'next_of_kin_name', 'next_of_kin_phone',
+            'insurance_status', 'insurance_provider', 'insurance_package', 'coverage_status',
+            'allergies', 'chronic_conditions', 'notes', 'blood_group', 'genotype',
+            'profile'
+        ]
+        read_only_fields = ['id']
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        profile_fields = [
+            'sex', 'date_of_birth', 'lga', 'ward', 'next_of_kin_name', 'next_of_kin_phone',
+            'insurance_status', 'insurance_provider', 'insurance_package', 'coverage_status',
+            'allergies', 'chronic_conditions', 'notes', 'blood_group', 'genotype'
+        ]
+        
+        profile_data = {}
+        for field in profile_fields:
+            if field in validated_data:
+                profile_data[field] = validated_data.pop(field)
+
+        email = validated_data.get('email')
+        if email is not None:
+            validated_data['username'] = email if email else instance.username
+            
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        instance.updated_by = self.context['request'].user
+        instance.save()
+
+        if profile_data:
+            profile = getattr(instance, 'patient_profile', None)
+            if profile:
+                for attr, value in profile_data.items():
+                    setattr(profile, attr, value)
+                profile.updated_by = self.context['request'].user
+                profile.save()
+
+        return instance
