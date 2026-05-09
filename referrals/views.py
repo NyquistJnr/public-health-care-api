@@ -20,6 +20,7 @@ class ReferralViewSet(viewsets.ModelViewSet):
     @extend_schema(
         summary="List & Filter Referrals (Inbound & Outbound)",
         parameters=[
+            OpenApiParameter(name='appointment_id', description='Filter by a specific Appointment UUID', required=False, type=str),
             OpenApiParameter(name='direction', description="'inbound' (Received) or 'outbound' (Sent). Defaults to 'outbound'.", required=False, type=str),
             OpenApiParameter(name='status', description='PENDING, ACCEPTED, REJECTED', required=False, type=str),
             OpenApiParameter(name='start_date', description='Filter from date (YYYY-MM-DD)', required=False, type=str),
@@ -39,11 +40,14 @@ class ReferralViewSet(viewsets.ModelViewSet):
         else:
             qs = Referral.objects.filter(referring_facility=facility)
 
+        appt_id = self.request.query_params.get('appointment_id')
         ref_status = self.request.query_params.get('status')
         start_date = self.request.query_params.get('start_date')
         end_date = self.request.query_params.get('end_date')
         search = self.request.query_params.get('search')
 
+        if appt_id:
+            qs = qs.filter(appointment__id=appt_id)
         if ref_status:
             qs = qs.filter(status=ref_status.upper())
         if start_date:
