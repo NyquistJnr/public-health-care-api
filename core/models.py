@@ -26,8 +26,7 @@ class BaseModel(models.Model):
         self._original_state = self._get_current_state()
 
     def _get_current_state(self):
-        """Returns a dictionary of the current model fields."""
-        return {field.name: getattr(self, field.name) for field in self._meta.fields}
+        return {field.attname: getattr(self, field.attname) for field in self._meta.fields}
 
     def _get_changed_fields(self):
         """Compares original state to current state and returns a diff."""
