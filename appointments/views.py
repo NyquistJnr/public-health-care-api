@@ -2,6 +2,7 @@ from rest_framework import viewsets, status as drf_status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
+from rest_framework.exceptions import ValidationError
 from django.db.models import Q
 from .models import Appointment, Vitals
 from .serializers import AppointmentReadSerializer, AppointmentWriteSerializer, AppointmentStatusUpdateSerializer, VitalsSerializer
@@ -64,9 +65,15 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         return qs.order_by('appointment_date', 'appointment_time')
 
     def perform_create(self, serializer):
+        user = self.request.user
+        if not getattr(user, 'facility', None):
+            raise ValidationError({
+                "detail": "Your account is not assigned to a specific facility. Only facility-level staff can book appointments."
+            })
+
         serializer.save(
-            facility=self.request.user.facility,
-            created_by=self.request.user,
+            facility=user.facility,
+            created_by=user,
             status='SCHEDULED'
         )
 
