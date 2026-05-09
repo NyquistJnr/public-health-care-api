@@ -40,18 +40,19 @@ class PrescriptionCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Prescription
-        fields = ['patient', 'appointment', 'priority', 'instructions', 'items']
+        fields = ['appointment', 'priority', 'instructions', 'items']
 
     @transaction.atomic
     def create(self, validated_data):
         items_data = validated_data.pop('items')
         user = self.context['request'].user
         
-        prescription = Prescription.objects.create(
-            prescribed_by=user,
-            created_by=user,
-            **validated_data
-        )
+        appointment = validated_data['appointment']
+        validated_data['patient'] = appointment.patient
+        
+        validated_data['prescribed_by'] = user
+        
+        prescription = Prescription.objects.create(**validated_data)
 
         PrescriptionItem.objects.bulk_create([
             PrescriptionItem(prescription=prescription, created_by=user, **item) 
