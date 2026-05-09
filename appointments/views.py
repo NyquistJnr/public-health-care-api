@@ -169,21 +169,45 @@ class VitalsViewSet(viewsets.ModelViewSet):
         parameters=[
             OpenApiParameter(name='appointment_id', description='Filter by appointment UUID', required=False, type=str),
             OpenApiParameter(name='patient_id', description='Filter by patient UUID', required=False, type=str),
+            OpenApiParameter(name='search', description='Search by Patient Name, PT-ID, or Vital ID', required=False, type=str),
+            OpenApiParameter(name='visit_type', description='Filter by Appointment Visit Type (e.g., GENERAL, ANTENATAL)', required=False, type=str),
+            OpenApiParameter(name='priority', description='Filter by Appointment Priority (NORMAL, URGENT, CRITICAL)', required=False, type=str),
+            OpenApiParameter(name='status', description='Filter by Appointment Status (e.g., VITALS_DONE, COMPLETED)', required=False, type=str),
         ]
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
     def get_queryset(self):
-        qs = Vitals.objects.filter(appointment__facility=self.request.user.facility)
+        qs = Vitals.objects.filter(
+            appointment__facility=self.request.user.facility
+        ).select_related('patient', 'appointment', 'patient__patient_profile')
 
         apt_id = self.request.query_params.get('appointment_id')
         pat_id = self.request.query_params.get('patient_id')
+        search = self.request.query_params.get('search')
+        visit_type = self.request.query_params.get('visit_type')
+        priority = self.request.query_params.get('priority')
+        apt_status = self.request.query_params.get('status')
 
         if apt_id:
             qs = qs.filter(appointment_id=apt_id)
         if pat_id:
             qs = qs.filter(patient_id=pat_id)
+        if visit_type:
+            qs = qs.filter(appointment__visit_type=visit_type.upper())
+        if priority:
+            qs = qs.filter(appointment__priority=priority.upper())
+        if apt_status:
+            qs = qs.filter(appointment__status=apt_status.upper())
+
+        if search:
+            qs = qs.filter(
+                Q(patient__first_name__icontains=search) |
+                Q(patient__last_name__icontains=search) |
+                Q(patient__patient_profile__patient_id__icontains=search) |
+                Q(vital_id__icontains=search)
+            )
 
         return qs.order_by('-created_at')
 
