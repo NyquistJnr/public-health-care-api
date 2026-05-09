@@ -1,8 +1,8 @@
 # referrals/serializers.py
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from django.db import transaction
 from .models import Referral
-from facilities.models import Facility
 
 class ReferralReadSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source='patient.get_full_name', read_only=True)
@@ -21,6 +21,7 @@ class ReferralReadSerializer(serializers.ModelSerializer):
             'clinical_summary', 'status', 'created_at', 'direction'
         ]
 
+    @extend_schema_field(serializers.CharField())
     def get_direction(self, obj):
         request = self.context.get('request')
         if request and hasattr(request.user, 'facility'):
