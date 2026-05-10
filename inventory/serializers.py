@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from django.db.models import Sum
+from django.db.models import Sum, Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from .models import Drug, DrugBatch
@@ -24,9 +24,10 @@ class DrugSerializer(serializers.ModelSerializer):
     def get_total_stock(self, obj):
         today = timezone.now().date()
         total = obj.batches.filter(
-            is_active=True, 
-            expiry_date__gte=today
+            Q(expiry_date__gte=today) | Q(expiry_date__isnull=True),
+            is_active=True
         ).aggregate(total=Sum('remaining_quantity'))['total']
+        
         return total or 0
 
     @extend_schema_field(serializers.CharField())
