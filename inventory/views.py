@@ -1,16 +1,19 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, serializers
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Sum, Q, Count
 from django.utils import timezone
 from datetime import timedelta
 from django.shortcuts import get_object_or_404
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import extend_schema, extend_schema_view, extend_schema_field, OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 from .models import Drug, DrugBatch, InventoryTransaction
 from facilities.models import Facility
-from .serializers import DrugSerializer, RefillSerializer, DispenseSerializer, FacilityDrugStatsSerializer, DrugDetailSerializer
+from .serializers import (DrugSerializer, RefillSerializer, DispenseSerializer, 
+                          FacilityDrugStatsSerializer, DrugDetailSerializer, ExpiringDrugBatchSerializer,
+                          ExpiryAnalysisSerializer)
 
 def calculate_facility_drug_stats(facility):
     drugs = Drug.objects.filter(facility=facility)
@@ -141,6 +144,21 @@ class DrugViewSet(viewsets.ModelViewSet):
                 batch.save(update_fields=['remaining_quantity', 'updated_at'])
 
         return Response({"detail": f"Successfully dispensed {quantity_to_dispense} {drug.unit} of {drug.name}."}, status=status.HTTP_200_OK)
+    
+    @extend_schema(
+        tags=["Drug Inventory"], 
+        summary="List expiring drugs in order", 
+        responses=ExpiringDrugBatchSerializer(many=True)
+    )
+    @action(detail=False, methods=['get'])
+    def expiring(self, request):
+        batches = DrugBatch.objects.filter(
+            drug__facility=request.user.facility,
+            is_active=True,
+            remaining_quantity__gt=0
+        ).select_related('drug').order_by('expiry_date')
+        serializer = ExpiringDrugBatchSerializer(batches, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 @extend_schema(tags=["Drug Inventory"], summary="Get User's Facility Drug Stats", responses=FacilityDrugStatsSerializer)
 class UserFacilityDrugStatsView(APIView):
@@ -157,3 +175,58 @@ class SpecificFacilityDrugStatsView(APIView):
         facility = get_object_or_404(Facility, id=facility_id)
         stats = calculate_facility_drug_stats(facility)
         return Response(stats)
+
+class DrugExpiryStatsView(APIView):
+    @extend_schema(
+        tags=["Drug Inventory"],
+        summary="Get expiry buckets for a date range",
+        parameters=[
+            OpenApiParameter(
+                name="start_date", 
+                type=OpenApiTypes.DATE, 
+                location=OpenApiParameter.QUERY, 
+                description="Filter by purchased date start (YYYY-MM-DD)"
+            ),
+            OpenApiParameter(
+                name="end_date", 
+                type=OpenApiTypes.DATE, 
+                location=OpenApiParameter.QUERY, 
+                description="Filter by purchased date end (YYYY-MM-DD)"
+            ),
+        ],
+        responses=ExpiryAnalysisSerializer
+    )
+    def get(self, request):
+        facility = request.user.facility
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+
+        queryset = DrugBatch.objects.filter(
+            drug__facility=facility,
+            is_active=True,
+            remaining_quantity__gt=0
+        )
+
+        if start_date and end_date:
+            queryset = queryset.filter(purchased_date__range=[start_date, end_date])
+
+        today = timezone.now().date()
+        d30 = today + timedelta(days=30)
+        d60 = today + timedelta(days=60)
+        d90 = today + timedelta(days=90)
+
+        stats = queryset.aggregate(
+            thirty=Count('drug', filter=Q(expiry_date__lte=d30), distinct=True),
+            sixty=Count('drug', filter=Q(expiry_date__lte=d60), distinct=True),
+            ninety=Count('drug', filter=Q(expiry_date__lte=d90), distinct=True),
+            total=Count('id')
+        )
+
+        data = {
+            "expiring_30_days": stats['thirty'],
+            "expiring_60_days": stats['sixty'],
+            "expiring_90_days": stats['ninety'],
+            "total_tracked_batches": stats['total']
+        }
+
+        return Response(data)

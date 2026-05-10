@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.db.models import Sum
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
-from .models import Drug, DrugBatch, InventoryTransaction
+from .models import Drug, DrugBatch
 
 
 class DrugBatchSerializer(serializers.ModelSerializer):
@@ -79,3 +79,35 @@ class FacilityDrugStatsSerializer(serializers.Serializer):
     low_stock_items = serializers.IntegerField()
     out_of_stock = serializers.IntegerField()
     expiring_soon = serializers.IntegerField()
+
+class ExpiringDrugBatchSerializer(serializers.ModelSerializer):
+    drug_name = serializers.CharField(source='drug.name', read_only=True)
+    unit = serializers.CharField(source='drug.unit', read_only=True)
+    category = serializers.CharField(source='drug.category', read_only=True)
+    days_left = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DrugBatch
+        fields = [
+            'id', 
+            'drug_name', 
+            'category',
+            'batch_number', 
+            'unit', 
+            'remaining_quantity', 
+            'expiry_date', 
+            'days_left',
+            'supplier'
+        ]
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_days_left(self, obj):
+        today = timezone.now().date()
+        delta = obj.expiry_date - today
+        return delta.days
+
+class ExpiryAnalysisSerializer(serializers.Serializer):
+    expiring_30_days = serializers.IntegerField()
+    expiring_60_days = serializers.IntegerField()
+    expiring_90_days = serializers.IntegerField()
+    total_tracked_batches = serializers.IntegerField()

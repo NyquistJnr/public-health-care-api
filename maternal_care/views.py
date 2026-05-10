@@ -1,5 +1,5 @@
 import uuid
-from django.db import transaction, models
+from django.db import transaction
 from django.db.models import Q
 from django.contrib.auth.models import Group
 from rest_framework import viewsets, status
