@@ -59,9 +59,9 @@ class LabRequestViewSet(viewsets.ModelViewSet):
         if priority:
             qs = qs.filter(priority=priority.upper())
         if start_date:
-            qs = qs.filter(created_at__gte=start_date)
+            qs = qs.filter(created_at__date__gte=start_date)
         if end_date:
-            qs = qs.filter(created_at__lte=end_date)
+            qs = qs.filter(created_at__date__lte=end_date)
             
         if search:
             qs = qs.filter(
@@ -106,9 +106,9 @@ class LabTestViewSet(viewsets.ModelViewSet):
         if test_status:
             qs = qs.filter(test_status=test_status.upper())
         if start_date:
-            qs = qs.filter(created_at__gte=start_date)
+            qs = qs.filter(created_at__date__gte=start_date)
         if end_date:
-            qs = qs.filter(created_at__lte=end_date)
+            qs = qs.filter(created_at__date__lte=end_date)
             
         if search:
             qs = qs.filter(
@@ -159,8 +159,8 @@ class LabTestStatsView(APIView):
         
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
-        if start_date: qs = qs.filter(created_at__gte=start_date)
-        if end_date: qs = qs.filter(created_at__lte=end_date)
+        if start_date: qs = qs.filter(created_at__date__gte=start_date)
+        if end_date: qs = qs.filter(created_at__date__lte=end_date)
 
         return Response({
             "pending_tests": qs.filter(test_status__in=['PENDING', 'SAMPLE_COLLECTED']).count(),
@@ -183,8 +183,8 @@ class LabRequestStatsView(APIView):
         
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
-        if start_date: qs = qs.filter(created_at__gte=start_date)
-        if end_date: qs = qs.filter(created_at__lte=end_date)
+        if start_date: qs = qs.filter(created_at__date__gte=start_date)
+        if end_date: qs = qs.filter(created_at__date__lte=end_date)
 
         return Response({
             "pending_requests": qs.filter(status='PENDING').count(),
@@ -207,8 +207,8 @@ class OverallLabStatsView(APIView):
         
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
-        if start_date: qs = qs.filter(created_at__gte=start_date)
-        if end_date: qs = qs.filter(created_at__lte=end_date)
+        if start_date: qs = qs = qs.filter(created_at__date__gte=start_date)
+        if end_date: qs = qs.filter(created_at__date__lte=end_date)
 
         pending = qs.filter(status='PENDING').count()
         in_progress = qs.filter(status='PARTIAL').count()
