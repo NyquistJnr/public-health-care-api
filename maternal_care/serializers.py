@@ -60,3 +60,11 @@ class RecordDeliverySerializer(serializers.Serializer):
     """Payload for recording a delivery and auto-registering the babies"""
     delivery_date = serializers.DateField()
     babies = NewbornRegistrationSerializer(many=True, help_text="List of babies born (handles twins/triplets)")
+
+class EpisodeBabySerializer(serializers.Serializer):
+    """Formats the output for babies born during a specific episode"""
+    id = serializers.UUIDField()
+    patient_display_id = serializers.CharField(source='patient_profile.patient_id', read_only=True)
+    full_name = serializers.CharField(source='get_full_name', read_only=True)
+    sex = serializers.CharField(source='patient_profile.sex', read_only=True)
+    date_of_birth = serializers.DateField(source='patient_profile.date_of_birth', read_only=True)

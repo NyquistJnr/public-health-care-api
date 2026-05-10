@@ -11,7 +11,7 @@ from .models import MaternalCareEpisode, ANCVisit, PNCVisit, PNCNewbornAssessmen
 from .serializers import (
     MaternalCareEpisodeSerializer, ANCVisitSerializer, 
     PNCVisitSerializer, PNCNewbornAssessmentSerializer,
-    RecordDeliverySerializer
+    RecordDeliverySerializer, EpisodeBabySerializer
 )
 
 @extend_schema(tags=["Maternal Care"])
@@ -118,6 +118,24 @@ class MaternalCareEpisodeViewSet(viewsets.ModelViewSet):
             "episode_status": episode.status,
             "registered_babies": created_babies
         }, status=status.HTTP_201_CREATED)
+    
+    @extend_schema(
+        summary="Get all babies born in this Episode", 
+        responses=EpisodeBabySerializer(many=True)
+    )
+    @action(detail=True, methods=['get'], url_path='babies')
+    def get_babies(self, request, pk=None):
+        """
+        Retrieves the registered newborn(s) linked to this pregnancy episode.
+        """
+        episode = self.get_object()
+        babies = User.objects.filter(
+            patient_profile__birth_episode=episode,
+            facility=request.user.facility
+        ).select_related('patient_profile')
+        
+        serializer = EpisodeBabySerializer(babies, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 @extend_schema(tags=["Maternal Care"])
