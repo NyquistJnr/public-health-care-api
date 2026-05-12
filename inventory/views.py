@@ -1,9 +1,10 @@
-from rest_framework import viewsets, status, serializers
+from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db import transaction
-from django.db.models import Sum, Q, Count
+from django.db.models import Sum, Q, Count, F
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from datetime import timedelta
 from django.shortcuts import get_object_or_404
@@ -51,7 +52,16 @@ def calculate_facility_drug_stats(facility):
     }
 
 @extend_schema_view(
-    list=extend_schema(tags=["Drug Inventory"], summary="List all drugs and current stock"),
+    list=extend_schema(
+        tags=["Drug Inventory"], 
+        summary="List all drugs and current stock",
+        parameters=[
+            OpenApiParameter("search", OpenApiTypes.STR, description="Search by drug name or category", required=False),
+            OpenApiParameter("start_date", OpenApiTypes.DATE, description="Filter by creation start date (YYYY-MM-DD)", required=False),
+            OpenApiParameter("end_date", OpenApiTypes.DATE, description="Filter by creation end date (YYYY-MM-DD)", required=False),
+            OpenApiParameter("status", OpenApiTypes.STR, description="Filter by status: IN_STOCK, LOW_STOCK, OUT_OF_STOCK", required=False),
+        ]
+    ),
     create=extend_schema(tags=["Drug Inventory"], summary="Add a new drug to the catalog"),
     retrieve=extend_schema(tags=["Drug Inventory"], summary="Get specific drug details"),
     update=extend_schema(tags=["Drug Inventory"], summary="Update drug catalog details"),
@@ -67,7 +77,51 @@ class DrugViewSet(viewsets.ModelViewSet):
         return DrugSerializer
 
     def get_queryset(self):
-        return Drug.objects.filter(facility=self.request.user.facility).order_by('name')
+        queryset = Drug.objects.filter(facility=self.request.user.facility)
+        search = self.request.query_params.get('search')
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        status_param = self.request.query_params.get('status')
+
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) | 
+                Q(category__icontains=search)
+            )
+
+        if start_date and end_date:
+            queryset = queryset.filter(created_at__date__range=[start_date, end_date])
+        elif start_date:
+            queryset = queryset.filter(created_at__date__gte=start_date)
+        elif end_date:
+            queryset = queryset.filter(created_at__date__lte=end_date)
+
+        if status_param:
+            today = timezone.now().date()
+            
+            active_batches_filter = Q(batches__is_active=True) & (
+                Q(batches__expiry_date__gte=today) | Q(batches__expiry_date__isnull=True)
+            )
+
+            queryset = queryset.annotate(
+                annotated_total_stock=Coalesce(
+                    Sum('batches__remaining_quantity', filter=active_batches_filter),
+                    0
+                )
+            )
+
+            status_param = status_param.upper()
+            if status_param == 'OUT_OF_STOCK':
+                queryset = queryset.filter(annotated_total_stock=0)
+            elif status_param == 'LOW_STOCK':
+                queryset = queryset.filter(
+                    annotated_total_stock__gt=0, 
+                    annotated_total_stock__lte=F('global_threshold')
+                )
+            elif status_param == 'IN_STOCK':
+                queryset = queryset.filter(annotated_total_stock__gt=F('global_threshold'))
+
+        return queryset.order_by('name')
 
     def perform_create(self, serializer):
         serializer.save(facility=self.request.user.facility, created_by=self.request.user)
