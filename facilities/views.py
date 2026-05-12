@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from core.serializers import StatusUpdateSerializer, EmptyStatsSerializer
 from django.utils import timezone
+from django.db.models import Q
 
 @extend_schema(tags=["Facility Management"])
 class FacilityViewSet(viewsets.ModelViewSet):
