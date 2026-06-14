@@ -2,12 +2,6 @@ from rest_framework import serializers
 from .models import Department
 from core.models import User
 
-class DepartmentMemberSerializer(serializers.ModelSerializer):
-    """Simplified user serialization for listing members"""
-    class Meta:
-        model = User
-        fields = ['id', 'first_name', 'last_name', 'email', 'role', 'staff_id', 'is_active']
-
 class DepartmentSerializer(serializers.ModelSerializer):
     head_name = serializers.SerializerMethodField()
     member_count = serializers.SerializerMethodField()
@@ -26,7 +20,10 @@ class DepartmentSerializer(serializers.ModelSerializer):
         return "Unassigned"
 
     def get_member_count(self, obj):
-        return obj.members.count()
+        count = obj.members.count()
+        if obj.head and not obj.members.filter(id=obj.head_id).exists():
+            count += 1
+        return count
 
     def validate(self, attrs):
         facility = self.context['request'].user.facility
@@ -37,15 +34,21 @@ class DepartmentSerializer(serializers.ModelSerializer):
             
         return attrs
 
-class DepartmentDetailSerializer(DepartmentSerializer):
-    """Includes the full list of staff members, used only on retrieval of a specific department"""
-    members_list = DepartmentMemberSerializer(source='members', many=True, read_only=True)
+class DepartmentMemberListSerializer(serializers.ModelSerializer):
+    """Used specifically for the paginated roster endpoint"""
+    position = serializers.SerializerMethodField()
 
-    class Meta(DepartmentSerializer.Meta):
-        fields = DepartmentSerializer.Meta.fields + ['members_list']
+    class Meta:
+        model = User
+        fields = ['id', 'first_name', 'last_name', 'email', 'role', 'staff_id', 'is_active', 'position']
+
+    def get_position(self, obj):
+        head_id = self.context.get('head_id')
+        if head_id and obj.id == head_id:
+            return "Head of Department"
+        return "Member"
 
 class DepartmentMemberUpdateSerializer(serializers.Serializer):
-    """Utility payload for bulk adding/removing staff"""
     user_ids = serializers.ListField(
         child=serializers.UUIDField(),
         allow_empty=False,

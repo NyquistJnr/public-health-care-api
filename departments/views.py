@@ -7,18 +7,14 @@ from .models import Department
 from core.models import User
 from .serializers import (
     DepartmentSerializer, 
-    DepartmentDetailSerializer, 
+    DepartmentMemberListSerializer, 
     DepartmentMemberUpdateSerializer
 )
 
-@extend_schema(tags=["Facility Departments"])
+@extend_schema(tags=["Departments"])
 class DepartmentViewSet(viewsets.ModelViewSet):
     queryset = Department.objects.none()
-
-    def get_serializer_class(self):
-        if self.action == 'retrieve':
-            return DepartmentDetailSerializer
-        return DepartmentSerializer
+    serializer_class = DepartmentSerializer
 
     @extend_schema(
         summary="List & Filter Facility Departments",
@@ -52,6 +48,45 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         serializer.save(updated_by=self.request.user)
 
     @extend_schema(
+        summary="Get Paginated Department Members", 
+        responses=DepartmentMemberListSerializer(many=True),
+        parameters=[
+            OpenApiParameter(name='search', description='Search staff by name or ID', required=False, type=str),
+        ]
+    )
+    @action(detail=True, methods=['get'], url_path='members')
+    def get_members(self, request, pk=None):
+        department = self.get_object()
+        
+        query = Q(department_memberships=department)
+        if department.head_id:
+            query |= Q(id=department.head_id)
+            
+        members_qs = User.objects.filter(query).distinct()
+
+        search = request.query_params.get('search')
+        if search:
+            members_qs = members_qs.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(staff_id__icontains=search)
+            )
+
+        members_qs = members_qs.order_by('first_name', 'last_name')
+        page = self.paginate_queryset(members_qs)
+    
+        serializer_context = self.get_serializer_context()
+        serializer_context['head_id'] = department.head_id
+
+        if page is not None:
+            serializer = DepartmentMemberListSerializer(page, many=True, context=serializer_context)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = DepartmentMemberListSerializer(members_qs, many=True, context=serializer_context)
+        return Response(serializer.data)
+
+
+    @extend_schema(
         summary="Add Staff Members to Department", 
         request=DepartmentMemberUpdateSerializer
     )
@@ -79,6 +114,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         return Response({
             "detail": f"Successfully added {valid_staff.count()} staff member(s) to {department.name}."
         }, status=status.HTTP_200_OK)
+
 
     @extend_schema(
         summary="Remove Staff Members from Department", 
