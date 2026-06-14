@@ -25,6 +25,7 @@ urlpatterns = [
     path('referrals/', include('referrals.urls')),
     path('doctor/', include('doctors.urls')),
     path('nurse/', include('nurse_chew.urls')),
+    path('departments/', include('departments.urls')),
     
     path('schema/', SpectacularAPIView.as_view(), name='schema'),
     path('docs/swagger/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
