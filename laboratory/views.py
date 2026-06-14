@@ -1,13 +1,15 @@
+# laboratory/views.py
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
+from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from django.db.models import Q, Sum
 
 from .models import LabRequest, LabTest
-from inventory.models import Drug
+from inventory.models import InventoryItem, ItemBatch, InventoryTransaction
 from .serializers import (
     LabRequestReadSerializer, LabRequestCreateSerializer, 
     LabTestItemSerializer, LabResultSubmitSerializer, LabTestStatsResponseSerializer,
@@ -50,18 +52,12 @@ class LabRequestViewSet(viewsets.ModelViewSet):
         end_date = self.request.query_params.get('end_date')
         search = self.request.query_params.get('search')
 
-        if patient_id:
-            qs = qs.filter(patient__id=patient_id)
-        if appt_id:
-            qs = qs.filter(appointment__id=appt_id)
-        if req_status:
-            qs = qs.filter(status=req_status.upper())
-        if priority:
-            qs = qs.filter(priority=priority.upper())
-        if start_date:
-            qs = qs.filter(created_at__date__gte=start_date)
-        if end_date:
-            qs = qs.filter(created_at__date__lte=end_date)
+        if patient_id: qs = qs.filter(patient__id=patient_id)
+        if appt_id: qs = qs.filter(appointment__id=appt_id)
+        if req_status: qs = qs.filter(status=req_status.upper())
+        if priority: qs = qs.filter(priority=priority.upper())
+        if start_date: qs = qs.filter(created_at__date__gte=start_date)
+        if end_date: qs = qs.filter(created_at__date__lte=end_date)
             
         if search:
             qs = qs.filter(
@@ -101,14 +97,10 @@ class LabTestViewSet(viewsets.ModelViewSet):
         end_date = self.request.query_params.get('end_date')
         search = self.request.query_params.get('search')
         
-        if lab_request_id:
-            qs = qs.filter(lab_request__id=lab_request_id)
-        if test_status:
-            qs = qs.filter(test_status=test_status.upper())
-        if start_date:
-            qs = qs.filter(created_at__date__gte=start_date)
-        if end_date:
-            qs = qs.filter(created_at__date__lte=end_date)
+        if lab_request_id: qs = qs.filter(lab_request__id=lab_request_id)
+        if test_status: qs = qs.filter(test_status=test_status.upper())
+        if start_date: qs = qs.filter(created_at__date__gte=start_date)
+        if end_date: qs = qs.filter(created_at__date__lte=end_date)
             
         if search:
             qs = qs.filter(
@@ -119,13 +111,39 @@ class LabTestViewSet(viewsets.ModelViewSet):
             
         return qs.order_by('-created_at')
 
-    @extend_schema(summary="Submit Lab Result", request=LabResultSubmitSerializer)
+    @extend_schema(summary="Submit Lab Result & Auto-Deduct Inventory", request=LabResultSubmitSerializer)
     @action(detail=True, methods=['patch'], url_path='submit-result')
+    @transaction.atomic
     def submit_result(self, request, pk=None):
         test = self.get_object()
         
         if test.test_status == 'RESULT_READY':
             return Response({"detail": "This test result has already been submitted."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if test.linked_item and not test.inventory_deducted:
+            today = timezone.now().date()
+            active_batches = ItemBatch.objects.filter(
+                item=test.linked_item,
+                is_active=True,
+                remaining_quantity__gt=0
+            ).filter(
+                Q(expiry_date__gte=today) | Q(expiry_date__isnull=True)
+            ).select_for_update().order_by('expiry_date')
+
+            if sum(b.remaining_quantity for b in active_batches) < 1:
+                return Response(
+                    {"detail": f"Cannot submit result. {test.linked_item.name} is completely out of stock."}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            batch = active_batches.first()
+            batch.remaining_quantity -= 1
+            batch.save(update_fields=['remaining_quantity', 'updated_at'])
+
+            InventoryTransaction.objects.create(
+                batch=batch, transaction_type='DISPENSE', quantity=-1, performed_by=request.user
+            )
+            test.inventory_deducted = True
 
         serializer = LabResultSubmitSerializer(test, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -143,6 +161,7 @@ class LabTestViewSet(viewsets.ModelViewSet):
             "detail": "Result submitted successfully.",
             "parent_request_status": updated_test.lab_request.status
         }, status=status.HTTP_200_OK)
+
 
 @extend_schema(
     tags=["Laboratory"],
@@ -168,6 +187,7 @@ class LabTestStatsView(APIView):
             "completed": qs.filter(test_status='RESULT_READY').count()
         })
 
+
 @extend_schema(
     tags=["Laboratory"],
     summary="Get Lab Request (Order) Statistics",
@@ -192,6 +212,7 @@ class LabRequestStatsView(APIView):
             "completed": qs.filter(status='COMPLETED').count()
         })
 
+
 @extend_schema(
     tags=["Laboratory"],
     summary="Get Overall Lab Facility Stats & Inventory Alerts",
@@ -207,31 +228,35 @@ class OverallLabStatsView(APIView):
         
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
-        if start_date: qs = qs = qs.filter(created_at__date__gte=start_date)
+        if start_date: qs = qs.filter(created_at__date__gte=start_date)
         if end_date: qs = qs.filter(created_at__date__lte=end_date)
 
         pending = qs.filter(status='PENDING').count()
         in_progress = qs.filter(status='PARTIAL').count()
         completed = qs.filter(status='COMPLETED').count()
 
-        facility_drugs = Drug.objects.filter(facility=request.user.facility)
+        lab_items = InventoryItem.objects.filter(
+            facility=request.user.facility,
+            inventory_category__in=['LAB_EQUIPMENT', 'CONSUMABLE']
+        )
         today = timezone.now().date()
         inventory_alerts = []
 
-        for drug in facility_drugs:
-            stock = drug.batches.filter(
-                is_active=True,
-                expiry_date__gte=today
+        for item in lab_items:
+            stock = item.batches.filter(
+                is_active=True
+            ).filter(
+                Q(expiry_date__gte=today) | Q(expiry_date__isnull=True)
             ).aggregate(total=Sum('remaining_quantity'))['total'] or 0
 
-            if stock <= drug.global_threshold:
+            if stock <= item.global_threshold:
                 inventory_alerts.append({
-                    "item_id": str(drug.id),
-                    "item_name": drug.name,
-                    "category": drug.category,
+                    "item_id": str(item.id),
+                    "item_name": item.name,
+                    "category": item.get_inventory_category_display(),
                     "current_stock": stock,
-                    "threshold": drug.global_threshold,
-                    "unit": drug.unit
+                    "threshold": item.global_threshold,
+                    "unit": item.item_type
                 })
 
         return Response({

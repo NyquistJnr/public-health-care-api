@@ -263,6 +263,7 @@ class PatientProfile(BaseModel):
     # Emergency Contacts
     next_of_kin_name = models.CharField(max_length=255, blank=True, null=True)
     next_of_kin_phone = models.CharField(max_length=20, blank=True, null=True)
+    next_of_kin_relationship = models.CharField(max_length=100, blank=True, null=True, help_text="e.g., Mother, Father, Aunt")
 
     # Insurance Information
     insurance_status = models.CharField(max_length=20, choices=INSURANCE_STATUS_CHOICES, default='NONE')

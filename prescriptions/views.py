@@ -50,7 +50,9 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
                 Q(patient__first_name__icontains=search) |
                 Q(patient__last_name__icontains=search) |
                 Q(patient__patient_profile__patient_id__icontains=search) |
-                Q(prescription_id__icontains=search)
+                Q(prescription_id__icontains=search) |
+                Q(items__inventory_item__name__icontains=search) |
+                Q(items__custom_drug_name__icontains=search)
             ).distinct()
 
         return qs.order_by('-created_at')

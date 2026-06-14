@@ -1,7 +1,7 @@
-from django.db import models, transaction, connection
+from django.db import models
 from core.models import BaseModel, User
 from appointments.models import Appointment
-from inventory.models import Drug
+from inventory.models import InventoryItem
 from django.utils import timezone
 
 class ImmunizationRecord(BaseModel):
@@ -25,10 +25,19 @@ class ImmunizationRecord(BaseModel):
     lga = models.CharField(max_length=100)
     ward = models.CharField(max_length=100)
     site_name = models.CharField(max_length=255, blank=True, null=True, help_text="Required for Outreach/Mobile")
-    vaccine_given = models.ForeignKey(Drug, on_delete=models.PROTECT, related_name='vaccinations')
+    
+    vaccine_given = models.ForeignKey(
+        InventoryItem, 
+        on_delete=models.PROTECT, 
+        related_name='vaccinations',
+        limit_choices_to={'drug_classification': 'IMMUNIZATION'}
+    )
+    
+    dose_number = models.PositiveIntegerField(default=1, help_text="Which dose in the sequence this was.")
+    next_due_date = models.DateField(null=True, blank=True, help_text="Calculated automatically by the ScheduleEngine")
     date_of_visit = models.DateField(default=timezone.now)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='COMPLETED')
-    age_at_vaccination = models.CharField(max_length=50, blank=True, null=True, help_text="e.g., '6 Weeks', '9 Months'")
+    age_at_vaccination = models.CharField(max_length=50, blank=True, null=True)
     reporting_month = models.IntegerField(editable=False)
     reporting_year = models.IntegerField(editable=False)
     
@@ -39,7 +48,7 @@ class ImmunizationRecord(BaseModel):
             self.reporting_month = self.date_of_visit.month
             self.reporting_year = self.date_of_visit.year
 
-        if not self.age_at_vaccination and self.patient and hasattr(self.patient, 'patient_profile'):
+        if not self.age_at_vaccination and getattr(self, 'patient', None) and hasattr(self.patient, 'patient_profile'):
             dob = self.patient.patient_profile.date_of_birth
             if dob:
                 delta_days = (self.date_of_visit - dob).days
@@ -53,4 +62,4 @@ class ImmunizationRecord(BaseModel):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.vaccine_given.name} for {self.patient.first_name} on {self.date_of_visit}"
+        return f"{self.vaccine_given.name} (Dose {self.dose_number}) for {self.patient.first_name}"

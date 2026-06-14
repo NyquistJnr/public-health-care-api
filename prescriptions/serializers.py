@@ -8,15 +8,15 @@ class PrescriptionItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PrescriptionItem
-        fields = ['id', 'drug', 'custom_drug_name', 'medication_name', 'dosage', 'frequency', 'duration']
+        fields = ['id', 'inventory_item', 'custom_drug_name', 'medication_name', 'dosage', 'frequency', 'duration']
 
     def validate(self, attrs):
-        drug = attrs.get('drug')
+        item = attrs.get('inventory_item')
         custom_name = attrs.get('custom_drug_name')
         
-        if not drug and not custom_name:
+        if not item and not custom_name:
             raise serializers.ValidationError("You must provide either a drug from the inventory or a custom drug name.")
-        if drug and custom_name:
+        if item and custom_name:
             raise serializers.ValidationError("Provide either a drug from inventory OR a custom name, not both.")
             
         return attrs
@@ -52,7 +52,7 @@ class PrescriptionCreateSerializer(serializers.ModelSerializer):
         
         validated_data['prescribed_by'] = user
         
-        prescription = Prescription.objects.create(**validated_data)
+        prescription = Prescription.objects.create(created_by=user, **validated_data)
 
         PrescriptionItem.objects.bulk_create([
             PrescriptionItem(prescription=prescription, created_by=user, **item) 

@@ -1,8 +1,7 @@
-# prescriptions/models.py
 from django.db import models, transaction, connection
 from core.models import BaseModel, User
 from appointments.models import Appointment
-from inventory.models import Drug
+from inventory.models import InventoryItem
 
 class Prescription(BaseModel):
     PRIORITY_CHOICES = (
@@ -43,7 +42,17 @@ class Prescription(BaseModel):
 
 class PrescriptionItem(BaseModel):
     prescription = models.ForeignKey(Prescription, on_delete=models.CASCADE, related_name='items')
-    drug = models.ForeignKey(Drug, on_delete=models.SET_NULL, null=True, blank=True, related_name='prescription_items')
+    
+    inventory_item = models.ForeignKey(
+        InventoryItem, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='prescription_items',
+        limit_choices_to={'inventory_category': 'DRUG'},
+        help_text="Links directly to the generalized Inventory Item."
+    )
+    
     custom_drug_name = models.CharField(max_length=255, blank=True, null=True, help_text="Used only if the drug is not in inventory")
     dosage = models.CharField(max_length=100, help_text="e.g., 500mg, 10ml")
     frequency = models.CharField(max_length=100, help_text="e.g., BD (Twice daily), TDS (Thrice daily)")
@@ -51,8 +60,8 @@ class PrescriptionItem(BaseModel):
 
     def get_medication_name(self):
         """Returns the actual inventory drug name, or the custom text if it's external."""
-        if self.drug:
-            return self.drug.name
+        if self.inventory_item:
+            return self.inventory_item.name
         return self.custom_drug_name
 
     def __str__(self):

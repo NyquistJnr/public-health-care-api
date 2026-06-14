@@ -8,7 +8,8 @@ from .models import ImmunizationRecord
 from .serializers import FastTrackImmunizationSerializer, ImmunizationReadSerializer, ImmunizationUpdateSerializer
 from core.models import User, PatientProfile
 from appointments.models import Appointment
-from inventory.models import DrugBatch, InventoryTransaction
+from inventory.models import ItemBatch, InventoryTransaction
+from inventory.services import ScheduleEngine
 from django.db.models import Q
 
 @extend_schema_view(
@@ -97,7 +98,7 @@ class ImmunizationViewSet(viewsets.ModelViewSet):
             )
 
         return qs.order_by('-date_of_visit', '-created_at')
-    
+
     @transaction.atomic
     def create(self, request):
         serializer = FastTrackImmunizationSerializer(data=request.data)
@@ -106,22 +107,7 @@ class ImmunizationViewSet(viewsets.ModelViewSet):
         
         user = request.user
         facility = user.facility
-        vaccine_drug = data['vaccine_given']
-
-        active_batches = DrugBatch.objects.filter(
-            drug=vaccine_drug, is_active=True, remaining_quantity__gt=0, expiry_date__gte=data['date_of_visit']
-        ).select_for_update().order_by('expiry_date')
-        
-        if sum(b.remaining_quantity for b in active_batches) < 1:
-            return Response({"detail": f"Insufficient stock for {vaccine_drug.name}. Please restock inventory."}, status=status.HTTP_400_BAD_REQUEST)
-
-        batch = active_batches.first()
-        batch.remaining_quantity -= 1
-        batch.save(update_fields=['remaining_quantity', 'updated_at'])
-        
-        InventoryTransaction.objects.create(
-            batch=batch, transaction_type='DISPENSE', quantity=-1, performed_by=user
-        )
+        vaccines_to_give = data['vaccines_given_ids']
 
         patient_record = None
         if data.get('patient_id'):
@@ -141,16 +127,25 @@ class ImmunizationViewSet(viewsets.ModelViewSet):
             patient_record.save()
             
             try:
-                group = Group.objects.get(name='PATIENT')
-                patient_record.groups.add(group)
+                patient_record.groups.add(Group.objects.get(name='PATIENT'))
             except Group.DoesNotExist:
                 pass
 
             PatientProfile.objects.create(
                 user=patient_record, created_by=user, sex=new_data['sex'], date_of_birth=new_data['date_of_birth'],
-                next_of_kin_name=new_data.get('next_of_kin_name', ''), next_of_kin_phone=new_data.get('next_of_kin_phone', '')
+                next_of_kin_name=new_data.get('next_of_kin_name', ''), 
+                next_of_kin_phone=new_data.get('next_of_kin_phone', ''),
+                next_of_kin_relationship=new_data.get('next_of_kin_relationship', '')
             )
 
+        for vaccine in vaccines_to_give:
+            active_batches = ItemBatch.objects.filter(
+                item=vaccine, is_active=True, remaining_quantity__gt=0, expiry_date__gte=data['date_of_visit']
+            )
+            if sum(b.remaining_quantity for b in active_batches) < 1:
+                return Response({"detail": f"Insufficient stock for {vaccine.name}. Aborting all."}, status=status.HTTP_400_BAD_REQUEST)
+
+        vaccine_names = ", ".join([v.name for v in vaccines_to_give])
         appointment = Appointment.objects.create(
             facility=facility,
             patient=patient_record,
@@ -159,30 +154,62 @@ class ImmunizationViewSet(viewsets.ModelViewSet):
             appointment_time="08:00:00",
             visit_type='IMMUNIZATION',
             status='COMPLETED',
-            reason_for_visit=f"{vaccine_drug.name} Administration ({data['session_type']})",
+            reason_for_visit=f"Vaccinations administered: {vaccine_names}",
             created_by=user
         )
 
-        record = ImmunizationRecord.objects.create(
-            patient=patient_record,
-            appointment=appointment,
-            facility=facility,
-            administered_by=user,
-            session_type=data['session_type'],
-            state=data['state'], lga=data['lga'], ward=data['ward'], site_name=data.get('site_name', ''),
-            vaccine_given=vaccine_drug,
-            date_of_visit=data['date_of_visit'],
-            status='COMPLETED',
-            notes=data.get('notes', ''),
-            created_by=user
-        )
+        administered_details = []
+        for vaccine in vaccines_to_give:
+            batch = ItemBatch.objects.filter(
+                item=vaccine, is_active=True, remaining_quantity__gt=0, expiry_date__gte=data['date_of_visit']
+            ).select_for_update().order_by('expiry_date').first()
+            
+            batch.remaining_quantity -= 1
+            batch.save(update_fields=['remaining_quantity', 'updated_at'])
+            
+            InventoryTransaction.objects.create(
+                batch=batch, transaction_type='DISPENSE', quantity=-1, performed_by=user
+            )
+
+            previous_doses = ImmunizationRecord.objects.filter(
+                patient=patient_record, vaccine_given=vaccine
+            ).count()
+            current_dose_number = previous_doses + 1
+
+            calculated_next_date = ScheduleEngine.calculate_next_due_date(
+                schedule_rules=vaccine.schedule_rules,
+                previous_doses_count=previous_doses,
+                last_dose_date=data['date_of_visit']
+            )
+
+            record = ImmunizationRecord.objects.create(
+                patient=patient_record,
+                appointment=appointment,
+                facility=facility,
+                administered_by=user,
+                session_type=data['session_type'],
+                state=data['state'], lga=data['lga'], ward=data['ward'], site_name=data.get('site_name', ''),
+                vaccine_given=vaccine,
+                dose_number=current_dose_number,
+                next_due_date=calculated_next_date,
+                date_of_visit=data['date_of_visit'],
+                status='COMPLETED',
+                notes=data.get('notes', ''),
+                created_by=user
+            )
+
+            administered_details.append({
+                "vaccine": vaccine.name,
+                "dose_number": current_dose_number,
+                "next_due_date": calculated_next_date
+            })
 
         return Response({
-            "detail": "Immunization successfully recorded.",
+            "detail": "Immunizations successfully recorded.",
             "patient_id": patient_record.patient_profile.patient_id,
             "patient_name": f"{patient_record.first_name} {patient_record.last_name}",
-            "vaccine": vaccine_drug.name,
-            "age_at_vaccination": record.age_at_vaccination
+            "age_at_vaccination": record.age_at_vaccination,
+            "administered": administered_details
         }, status=status.HTTP_201_CREATED)
 
     def perform_update(self, serializer):

@@ -1,8 +1,8 @@
-# laboratory/models.py
 from django.db import models, transaction, connection
 from django.utils import timezone
 from core.models import BaseModel, User
 from appointments.models import Appointment
+from inventory.models import InventoryItem
 
 class LabRequest(BaseModel):
     PRIORITY_CHOICES = (
@@ -53,6 +53,18 @@ class LabTest(BaseModel):
 
     lab_request = models.ForeignKey(LabRequest, on_delete=models.CASCADE, related_name='tests')
     test_name = models.CharField(max_length=255)
+
+    linked_item = models.ForeignKey(
+        InventoryItem, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='linked_lab_tests',
+        help_text="The specific test kit or consumable used for this test.",
+        limit_choices_to={'inventory_category__in': ['LAB_EQUIPMENT', 'CONSUMABLE']}
+    )
+    inventory_deducted = models.BooleanField(default=False, help_text="Flags if the linked item has been deducted from stock.")
+
     sample_type = models.CharField(max_length=100, blank=True, null=True, help_text="e.g., Blood, Urine, Swab")
     test_status = models.CharField(max_length=30, choices=TEST_STATUS_CHOICES, default='PENDING')
     result_value = models.CharField(max_length=255, blank=True, null=True)
@@ -65,7 +77,6 @@ class LabTest(BaseModel):
     result_date = models.DateTimeField(null=True, blank=True)
 
     def check_and_update_parent_status(self):
-        """Automatically upgrades the parent LabRequest status based on sibling tests"""
         siblings = self.lab_request.tests.exclude(test_status='CANCELLED')
         total = siblings.count()
         completed = siblings.filter(test_status='RESULT_READY').count()

@@ -1,18 +1,23 @@
-# laboratory/serializers.py
 from rest_framework import serializers
 from django.db import transaction
-from django.utils import timezone
 from .models import LabRequest, LabTest
 from core.models import User
+from inventory.models import InventoryItem
 
 class LabTestItemSerializer(serializers.ModelSerializer):
-    """Used for reading and creating nested test items"""
+    linked_item_name = serializers.CharField(source='linked_item.name', read_only=True)
+
     class Meta:
         model = LabTest
-        fields = ['id', 'test_name', 'sample_type', 'test_status', 'result_value', 'result_unit', 
-                  'test_method', 'result_interpretation', 'result_notes', 'result_date']
-        read_only_fields = ['id', 'test_status', 'result_value', 'result_unit', 
-                            'test_method', 'result_interpretation', 'result_notes', 'result_date']
+        fields = [
+            'id', 'test_name', 'linked_item', 'linked_item_name', 'sample_type', 
+            'test_status', 'result_value', 'result_unit', 'test_method', 
+            'result_interpretation', 'result_notes', 'result_date'
+        ]
+        read_only_fields = [
+            'id', 'test_status', 'result_value', 'result_unit', 
+            'test_method', 'result_interpretation', 'result_notes', 'result_date'
+        ]
 
 class LabRequestReadSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source='patient.get_full_name', read_only=True)
@@ -66,7 +71,6 @@ class LabRequestCreateSerializer(serializers.ModelSerializer):
         return lab_request
 
 class LabResultSubmitSerializer(serializers.ModelSerializer):
-    """Used by Lab Technicians to enter results for a specific test"""
     class Meta:
         model = LabTest
         fields = ['result_value', 'result_unit', 'test_method', 'result_interpretation', 'result_notes']
@@ -92,7 +96,7 @@ class InventoryAlertItemSerializer(serializers.Serializer):
     category = serializers.CharField()
     current_stock = serializers.IntegerField()
     threshold = serializers.IntegerField()
-    unit = serializers.CharField()
+    item_type = serializers.CharField(source='unit')
 
 class OverallLabStatsResponseSerializer(serializers.Serializer):
     pending_lab_requests = serializers.IntegerField()
