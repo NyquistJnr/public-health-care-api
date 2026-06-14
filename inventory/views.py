@@ -256,6 +256,12 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
     @extend_schema(
         tags=["Inventory & Stock Management"], 
         summary="List expiring batches in order", 
+        parameters=[
+            OpenApiParameter(name='inventory_category', description='Filter by Category: DRUG, LAB_EQUIPMENT, CONSUMABLE', required=False, type=str),
+            OpenApiParameter(name='drug_classification', description='Filter by Class: NORMAL, IMMUNIZATION', required=False, type=str),
+            OpenApiParameter(name='page', description='Page number', required=False, type=int),
+            OpenApiParameter(name='page_size', description='Items per page', required=False, type=int),
+        ],
         responses=ExpiringDrugBatchSerializer(many=True)
     )
     @action(detail=False, methods=['get'])
@@ -268,7 +274,23 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
             expiry_date__isnull=False
         ).filter(
             expiry_date__gte=today
-        ).select_related('item').order_by('expiry_date')
+        ).select_related('item')
+
+        category = request.query_params.get('inventory_category')
+        classification = request.query_params.get('drug_classification')
+
+        if category:
+            batches = batches.filter(item__inventory_category=category.upper())
+            
+        if classification:
+            batches = batches.filter(item__drug_classification=classification.upper())
+
+        batches = batches.order_by('expiry_date')
+        
+        page = self.paginate_queryset(batches)
+        if page is not None:
+            serializer = ExpiringDrugBatchSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
         
         serializer = ExpiringDrugBatchSerializer(batches, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
