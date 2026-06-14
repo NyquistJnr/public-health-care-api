@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 from .models import Department
 from core.models import User
 
@@ -14,11 +15,13 @@ class DepartmentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'facility', 'created_at', 'updated_at']
 
+    @extend_schema_field(serializers.CharField())
     def get_head_name(self, obj):
         if obj.head:
             return f"{obj.head.first_name} {obj.head.last_name}"
         return "Unassigned"
 
+    @extend_schema_field(serializers.IntegerField())
     def get_member_count(self, obj):
         count = obj.members.count()
         if obj.head and not obj.members.filter(id=obj.head_id).exists():
@@ -42,6 +45,7 @@ class DepartmentMemberListSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'first_name', 'last_name', 'email', 'role', 'staff_id', 'is_active', 'position']
 
+    @extend_schema_field(serializers.CharField())
     def get_position(self, obj):
         head_id = self.context.get('head_id')
         if head_id and obj.id == head_id:
@@ -74,16 +78,20 @@ class FacilityDepartmentListSerializer(serializers.ModelSerializer):
             'head_role'
         ]
 
+    @extend_schema_field(serializers.CharField())
     def get_head_name(self, obj):
         if obj.head:
             return f"{obj.head.first_name} {obj.head.last_name}"
         return "Unassigned"
 
+    @extend_schema_field(serializers.CharField())
     def get_head_phone(self, obj):
         return obj.head.phone_number if obj.head and obj.head.phone_number else "N/A"
 
+    @extend_schema_field(serializers.CharField())
     def get_head_email(self, obj):
         return obj.head.email if obj.head else "N/A"
 
+    @extend_schema_field(serializers.CharField())
     def get_head_role(self, obj):
         return obj.head.get_role_display() if obj.head else "N/A"

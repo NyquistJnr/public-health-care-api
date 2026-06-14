@@ -137,7 +137,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_200_OK)
 
 @extend_schema(
-    tags=["Facility Departments"],
+    tags=["Departments"],
     summary="Get All Departments for a Specific Facility",
     parameters=[
         OpenApiParameter(name='search', description='Search by department name', required=False, type=str),
