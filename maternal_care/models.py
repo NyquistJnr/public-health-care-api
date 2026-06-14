@@ -1,8 +1,37 @@
 # maternal_care/models.py
-
 from django.db import models, transaction, connection
+from datetime import timedelta
 from core.models import BaseModel, User
 from appointments.models import Appointment
+
+class MaternalScheduleRule(BaseModel):
+    """Global (State-Level) Schedule Settings for ANC/PNC"""
+    CARE_TYPES = (
+        ('ANC', 'Antenatal Care'),
+        ('PNC', 'Postnatal Care')
+    )
+    RULE_TYPES = (
+        ('ONCE', 'Once'),
+        ('RECURRING', 'Recurring (Fixed Interval)'),
+        ('VARIABLE_SEQUENCE', 'Variable Sequence')
+    )
+
+    care_type = models.CharField(max_length=10, choices=CARE_TYPES, unique=True, help_text="One active rule per care type.")
+    rule_type = models.CharField(max_length=20, choices=RULE_TYPES, default='VARIABLE_SEQUENCE')
+    
+    interval_days = models.PositiveIntegerField(default=0, help_text="Used if RECURRING (e.g., every 30 days)")
+    intervals_sequence = models.JSONField(
+        default=list, blank=True, 
+        help_text="Used if VARIABLE. Array of days between visits. e.g., [28, 28, 14, 14, 7]"
+    )
+    visit_tasks = models.JSONField(
+        default=dict, blank=True, 
+        help_text="Map of visit sequence index to list of tasks. e.g., {'0': ['Booking Bloods', 'Dating Scan'], '4': ['Anomaly Scan']}"
+    )
+
+    def __str__(self):
+        return f"{self.get_care_type_display()} Global Schedule Rule"
+
 
 class MaternalCareEpisode(BaseModel):
     STATUS_CHOICES = (
@@ -27,7 +56,19 @@ class MaternalCareEpisode(BaseModel):
     partner_name = models.CharField(max_length=255, blank=True, null=True)
     partner_phone = models.CharField(max_length=20, blank=True, null=True)
 
+    custom_anc_schedule = models.JSONField(
+        blank=True, null=True, 
+        help_text="Overrides the Global ANC rule. Format: {'rule_type': '...', 'intervals_sequence': [], 'visit_tasks': {}}"
+    )
+    custom_pnc_schedule = models.JSONField(
+        blank=True, null=True, 
+        help_text="Overrides the Global PNC rule. Same format."
+    )
+
     def save(self, *args, **kwargs):
+        if self.last_menstrual_period and not self.expected_date_of_delivery:
+            self.expected_date_of_delivery = self.last_menstrual_period + timedelta(days=280)
+
         if not self.episode_id:
             with transaction.atomic():
                 last_ep = MaternalCareEpisode.objects.select_for_update().order_by('-sequence_number').first()
@@ -47,16 +88,18 @@ class ANCVisit(BaseModel):
     appointment = models.OneToOneField(Appointment, on_delete=models.CASCADE, related_name='anc_record')
     attendance_type = models.CharField(max_length=10, choices=ATTENDANCE_CHOICES, default='NEW')
     
-    # Dynamic Labs (Done during this specific visit)
+    visit_sequence_number = models.PositiveIntegerField(default=1, help_text="Which visit in the sequence is this?")
+    next_visit_date = models.DateField(null=True, blank=True, help_text="Calculated date for the next visit")
+    recommended_tasks = models.JSONField(default=list, blank=True, help_text="Tasks (like Ultrasound) due for THIS visit")
+    
     hiv_status = models.CharField(max_length=50, blank=True, null=True)
     vdrl_syphilis = models.CharField(max_length=50, blank=True, null=True)
     hepatitis_b = models.CharField(max_length=50, blank=True, null=True)
     hemoglobin = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, help_text="g/dL")
     urinalysis = models.TextField(blank=True, null=True)
     
-    # Interventions
-    tt_dose_given = models.CharField(max_length=20, blank=True, null=True, help_text="e.g. TT1, TT2")
-    iptp_dose_given = models.CharField(max_length=20, blank=True, null=True, help_text="e.g. Dose 1, Dose 2")
+    tt_dose_given = models.CharField(max_length=20, blank=True, null=True)
+    iptp_dose_given = models.CharField(max_length=20, blank=True, null=True)
     iron_folate_given = models.BooleanField(default=False)
     
     risk_factors = models.TextField(blank=True, null=True)
@@ -73,22 +116,21 @@ class PNCVisit(BaseModel):
     episode = models.ForeignKey(MaternalCareEpisode, on_delete=models.CASCADE, related_name='pnc_visits')
     appointment = models.OneToOneField(Appointment, on_delete=models.CASCADE, related_name='pnc_record')
     attendance_type = models.CharField(max_length=10, choices=ATTENDANCE_CHOICES, default='NEW')
-    timing_of_visit = models.CharField(max_length=50, help_text="e.g., Within 24h, 3 Days, 7 Days, 6 Weeks")
     
-    # Maternal Assessment
+    visit_sequence_number = models.PositiveIntegerField(default=1)
+    next_visit_date = models.DateField(null=True, blank=True)
+    recommended_tasks = models.JSONField(default=list, blank=True)
+
+    timing_of_visit = models.CharField(max_length=50, help_text="e.g., Within 24h, 3 Days, 7 Days, 6 Weeks")
     vaginal_examination_conducted = models.BooleanField(default=False)
     hemoglobin_pcv = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     urinalysis = models.TextField(blank=True, null=True)
-    
-    # JSON array handles multiple selections easily: ["Family Planning", "Nutrition"]
     counselling_topics = models.JSONField(default=list, blank=True, help_text="List of topics covered")
-    
     outcome = models.CharField(max_length=50, choices=OUTCOME_CHOICES, default='TREATED')
     referral_reason = models.TextField(blank=True, null=True)
 
     def __str__(self):
         return f"PNC - {self.episode.episode_id} on {self.appointment.appointment_date}"
-
 
 class PNCNewbornAssessment(BaseModel):
     OUTCOME_CHOICES = (

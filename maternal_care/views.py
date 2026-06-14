@@ -1,20 +1,44 @@
 # maternal_care/views.py
-
 import uuid
 from django.db import transaction
 from django.db.models import Q
 from django.contrib.auth.models import Group
+from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter
+
 from core.models import User, PatientProfile
-from .models import MaternalCareEpisode, ANCVisit, PNCVisit, PNCNewbornAssessment
+from .models import (
+    MaternalCareEpisode, ANCVisit, PNCVisit, 
+    PNCNewbornAssessment, MaternalScheduleRule
+)
 from .serializers import (
     MaternalCareEpisodeSerializer, ANCVisitSerializer, 
     PNCVisitSerializer, PNCNewbornAssessmentSerializer,
-    RecordDeliverySerializer, EpisodeBabySerializer
+    RecordDeliverySerializer, EpisodeBabySerializer,
+    MaternalScheduleRuleSerializer
 )
+from .services import MaternalScheduleEngine
+
+
+@extend_schema(tags=["Maternal Care Setup"])
+class MaternalScheduleRuleViewSet(viewsets.ModelViewSet):
+    """
+    Manage the Global/State-wide default settings for ANC and PNC schedules.
+    Should be restricted to State Admins or highly privileged users.
+    """
+    queryset = MaternalScheduleRule.objects.all()
+    serializer_class = MaternalScheduleRuleSerializer
+    # permission_classes = [HasRequiredPermission]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
 
 @extend_schema(tags=["Maternal Care"])
 class MaternalCareEpisodeViewSet(viewsets.ModelViewSet):
@@ -177,7 +201,20 @@ class ANCVisitViewSet(viewsets.ModelViewSet):
         return qs.order_by('-created_at')
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        visit = serializer.save(created_by=self.request.user)
+        previous_visits_count = ANCVisit.objects.filter(episode=visit.episode).count()
+        visit.visit_sequence_number = previous_visits_count
+
+        next_date, recommended_tasks = MaternalScheduleEngine.calculate_next_visit(
+            episode=visit.episode,
+            care_type='ANC',
+            current_visit_sequence=visit.visit_sequence_number,
+            last_visit_date=visit.appointment.appointment_date or timezone.now().date()
+        )
+        
+        visit.next_visit_date = next_date
+        visit.recommended_tasks = recommended_tasks
+        visit.save(update_fields=['visit_sequence_number', 'next_visit_date', 'recommended_tasks'])
 
 
 @extend_schema(tags=["Maternal Care"])
@@ -217,7 +254,21 @@ class PNCVisitViewSet(viewsets.ModelViewSet):
         return qs.order_by('-created_at')
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        visit = serializer.save(created_by=self.request.user)
+        
+        previous_visits_count = PNCVisit.objects.filter(episode=visit.episode).count()
+        visit.visit_sequence_number = previous_visits_count
+        
+        next_date, recommended_tasks = MaternalScheduleEngine.calculate_next_visit(
+            episode=visit.episode,
+            care_type='PNC',
+            current_visit_sequence=visit.visit_sequence_number,
+            last_visit_date=visit.appointment.appointment_date or timezone.now().date()
+        )
+        
+        visit.next_visit_date = next_date
+        visit.recommended_tasks = recommended_tasks
+        visit.save(update_fields=['visit_sequence_number', 'next_visit_date', 'recommended_tasks'])
 
 
 @extend_schema(tags=["Maternal Care"])

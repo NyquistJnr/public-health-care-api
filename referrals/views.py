@@ -2,12 +2,12 @@
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny
 from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from django.db.models import Q
-from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from .models import Referral
 from .serializers import ReferralReadSerializer, ReferralCreateSerializer, ReferralStatusUpdateSerializer
 from core.tasks import dispatch_external_referral
@@ -113,7 +113,30 @@ class ExternalReferralActionView(APIView):
         summary="Process External Magic Link Action",
         parameters=[
             OpenApiParameter(name='token', description='The cryptographic token from the email', required=True, type=str),
-        ]
+        ],
+        responses={
+            200: inline_serializer(
+                name='ExternalReferralSuccessResponse',
+                fields={
+                    'status': serializers.CharField(),
+                    'message': serializers.CharField(),
+                    'referral_id': serializers.CharField(),
+                    'patient': serializers.CharField(),
+                }
+            ),
+            400: inline_serializer(
+                name='ExternalReferralErrorResponse',
+                fields={
+                    'error': serializers.CharField(),
+                }
+            ),
+            404: inline_serializer(
+                name='ExternalReferralNotFoundResponse',
+                fields={
+                    'error': serializers.CharField(),
+                }
+            )
+        }
     )
     def get(self, request):
         token = request.query_params.get('token')
