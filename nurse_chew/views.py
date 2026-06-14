@@ -2,14 +2,15 @@
 from datetime import timedelta
 from django.utils import timezone
 from rest_framework.views import APIView
+from rest_framework import generics
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-from appointments.models import Appointment
-from maternal_care.models import ANCVisit
-from core.models import PatientProfile
-from .serializers import NurseStatsResponseSerializer
-from rest_framework import generics
 from django.db.models import Q
+from core.pagination import StandardResultsSetPagination
+from appointments.models import Appointment
+from maternal_care.models import ANCVisit, PNCVisit
+from core.models import PatientProfile
+from immunization.models import ImmunizationRecord
 from laboratory.models import LabRequest
 from prescriptions.models import Prescription
 from referrals.models import Referral
@@ -17,6 +18,11 @@ from appointments.serializers import AppointmentReadSerializer
 from laboratory.serializers import LabRequestReadSerializer
 from prescriptions.serializers import PrescriptionReadSerializer
 from referrals.serializers import ReferralReadSerializer
+from .serializers import (
+    NurseStatsResponseSerializer,
+    PaginatedMaternalAlertsSerializer,
+    ImmunizationDueItemSerializer
+)
 
 @extend_schema(
     tags=["Nurse/CHEW Dashboard"],
@@ -193,3 +199,126 @@ class PatientReferralsView(generics.ListAPIView):
                 qs = qs.filter(receiving_facility=facility)
 
         return qs.order_by('-created_at').distinct()
+
+@extend_schema(
+    tags=["Nurse/CHEW Dashboard"],
+    summary="Get Maternal Alerts (Urgent Appointments & Overdue Visits)",
+    parameters=[
+        OpenApiParameter(name='page', description='Page number', required=False, type=int),
+        OpenApiParameter(name='page_size', description='Items per page (Default 10, Max 100)', required=False, type=int),
+    ],
+    responses=PaginatedMaternalAlertsSerializer
+)
+class MaternalAlertsView(APIView):
+    def get(self, request):
+        facility = request.user.facility
+        today = timezone.now().date()
+        alerts = []
+
+        urgent_appts = Appointment.objects.filter(
+            facility=facility,
+            status__in=['SCHEDULED', 'ARRIVED', 'VITALS_DONE'],
+            priority__in=['URGENT', 'CRITICAL'],
+            visit_type__in=['ANTENATAL', 'POSTNATAL']
+        ).select_related('patient__patient_profile')
+
+        for appt in urgent_appts:
+            alerts.append({
+                "alert_type": "URGENT_APPOINTMENT",
+                "patient_name": appt.patient.get_full_name(),
+                "patient_id": appt.patient.patient_profile.patient_id,
+                "date": appt.appointment_date,
+                "priority": appt.priority,
+                "details": f"{appt.get_visit_type_display()} - {appt.get_status_display()}"
+            })
+
+        latest_anc_ids = ANCVisit.objects.filter(
+            appointment__facility=facility,
+            next_visit_date__isnull=False,
+            episode__status='ACTIVE'
+        ).order_by('episode', '-created_at').distinct('episode').values_list('id', flat=True)
+
+        due_ancs = ANCVisit.objects.filter(
+            id__in=latest_anc_ids,
+            next_visit_date__lte=today + timedelta(days=7)
+        ).select_related('episode__patient__patient_profile')
+
+        for anc in due_ancs:
+            priority = "CRITICAL" if anc.next_visit_date < today else "NORMAL"
+            alerts.append({
+                "alert_type": "OVERDUE_ANC",
+                "patient_name": anc.episode.patient.get_full_name(),
+                "patient_id": anc.episode.patient.patient_profile.patient_id,
+                "date": anc.next_visit_date,
+                "priority": priority,
+                "details": f"ANC Sequence {anc.visit_sequence_number + 1} is due."
+            })
+
+        latest_pnc_ids = PNCVisit.objects.filter(
+            appointment__facility=facility,
+            next_visit_date__isnull=False,
+            episode__status__in=['ACTIVE', 'DELIVERED']
+        ).order_by('episode', '-created_at').distinct('episode').values_list('id', flat=True)
+
+        due_pncs = PNCVisit.objects.filter(
+            id__in=latest_pnc_ids,
+            next_visit_date__lte=today + timedelta(days=7)
+        ).select_related('episode__patient__patient_profile')
+
+        for pnc in due_pncs:
+            priority = "CRITICAL" if pnc.next_visit_date < today else "NORMAL"
+            alerts.append({
+                "alert_type": "OVERDUE_PNC",
+                "patient_name": pnc.episode.patient.get_full_name(),
+                "patient_id": pnc.episode.patient.patient_profile.patient_id,
+                "date": pnc.next_visit_date,
+                "priority": priority,
+                "details": f"PNC Sequence {pnc.visit_sequence_number + 1} is due."
+            })
+
+        def sort_key(item):
+            priority_weight = 0 if item['priority'] in ['CRITICAL', 'URGENT'] else 1
+            return (item['date'], priority_weight)
+
+        alerts.sort(key=sort_key)
+
+        paginator = StandardResultsSetPagination()
+        paginated_alerts = paginator.paginate_queryset(alerts, request, view=self)
+        
+        return paginator.get_paginated_response(paginated_alerts)
+
+@extend_schema(
+    tags=["Nurse/CHEW Dashboard"],
+    summary="Get Scheduled and Overdue Immunizations",
+    parameters=[
+        OpenApiParameter(name='search', description='Search by Patient Name', required=False, type=str),
+    ]
+)
+class ImmunizationsDueView(generics.ListAPIView):
+    serializer_class = ImmunizationDueItemSerializer
+
+    def get_queryset(self):
+        facility = self.request.user.facility
+        
+        latest_record_ids = ImmunizationRecord.objects.filter(
+            facility=facility,
+            next_due_date__isnull=False
+        ).order_by(
+            'patient', 'vaccine_given', '-date_of_visit'
+        ).distinct('patient', 'vaccine_given').values_list('id', flat=True)
+
+        today = timezone.now().date()
+        qs = ImmunizationRecord.objects.filter(
+            id__in=latest_record_ids,
+            next_due_date__lte=today + timedelta(days=30)
+        ).select_related('patient__patient_profile', 'vaccine_given')
+
+        search = self.request.query_params.get('search')
+        if search:
+            qs = qs.filter(
+                Q(patient__first_name__icontains=search) |
+                Q(patient__last_name__icontains=search) |
+                Q(vaccine_given__name__icontains=search)
+            )
+
+        return qs.order_by('next_due_date')
