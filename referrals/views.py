@@ -1,4 +1,7 @@
 # referrals/views.py
+from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
+from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7,6 +10,7 @@ from django.db.models import Q
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from .models import Referral
 from .serializers import ReferralReadSerializer, ReferralCreateSerializer, ReferralStatusUpdateSerializer
+from .services import compile_and_send_external_referral
 
 @extend_schema(tags=["Patient Referrals"])
 class ReferralViewSet(viewsets.ModelViewSet):
@@ -16,6 +20,13 @@ class ReferralViewSet(viewsets.ModelViewSet):
         if self.action == 'create':
             return ReferralCreateSerializer
         return ReferralReadSerializer
+
+    def perform_create(self, serializer):
+        referral = serializer.save(created_by=self.request.user)
+
+        if referral.destination_level in ['SECONDARY', 'HIGHER', 'OTHER']:
+            request_host = self.request.get_host()
+            compile_and_send_external_referral(referral, request_host)
 
     @extend_schema(
         summary="List & Filter Referrals (Inbound & Outbound)",
@@ -70,7 +81,6 @@ class ReferralViewSet(viewsets.ModelViewSet):
     def update_status(self, request, pk=None):
         referral = self.get_object()
         
-        # High IQ Security: Only the RECEIVING facility can accept or reject it.
         if referral.receiving_facility != request.user.facility:
             raise PermissionDenied("You can only Accept or Reject referrals sent TO your facility.")
 
@@ -89,3 +99,53 @@ class ReferralViewSet(viewsets.ModelViewSet):
             "detail": f"Referral successfully {updated_referral.status.lower()}.",
             "status": updated_referral.status
         }, status=status.HTTP_200_OK)
+
+class ExternalReferralActionView(APIView):
+    """
+    Public endpoint. No auth required. 
+    Secured by Django's cryptographic TimestampSigner.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(
+        tags=["Patient Referrals"],
+        summary="Process External Magic Link Action",
+        parameters=[
+            OpenApiParameter(name='token', description='The cryptographic token from the email', required=True, type=str),
+        ]
+    )
+    def get(self, request):
+        token = request.query_params.get('token')
+        if not token:
+            return Response({"error": "Token is missing."}, status=status.HTTP_400_BAD_REQUEST)
+
+        signer = TimestampSigner()
+
+        try:
+            payload = signer.unsign(token, max_age=604800)
+            ref_id, action = payload.split(':')
+            referral = Referral.objects.get(id=ref_id)
+
+            if referral.status != 'PENDING':
+                return Response(
+                    {"message": f"This referral has already been processed and is currently marked as {referral.status}."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            referral.status = action
+            referral.save(update_fields=['status', 'updated_at'])
+
+            return Response({
+                "status": "success",
+                "message": f"Thank you! The referral has been successfully marked as {action}.",
+                "referral_id": referral.referral_id,
+                "patient": f"{referral.patient.first_name} {referral.patient.last_name}"
+            }, status=status.HTTP_200_OK)
+
+        except SignatureExpired:
+            return Response({"error": "This link has expired. Please contact the referring facility."}, status=status.HTTP_400_BAD_REQUEST)
+        except (BadSignature, ValueError):
+            return Response({"error": "Invalid or tampered security token."}, status=status.HTTP_400_BAD_REQUEST)
+        except Referral.DoesNotExist:
+            return Response({"error": "Referral record not found in the system."}, status=status.HTTP_404_NOT_FOUND)
