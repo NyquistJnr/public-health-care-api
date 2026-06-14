@@ -23,7 +23,7 @@ from .serializers import (
 from .services import MaternalScheduleEngine
 
 
-@extend_schema(tags=["Maternal Care Setup"])
+@extend_schema(tags=["Maternal Care Setup - State Admin and Doctor"])
 class MaternalScheduleRuleViewSet(viewsets.ModelViewSet):
     """
     Manage the Global/State-wide default settings for ANC and PNC schedules.
