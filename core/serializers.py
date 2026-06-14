@@ -1,7 +1,7 @@
 # core/serializers.py
 import uuid
 from django.db import transaction
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.models import Group
@@ -115,15 +115,47 @@ class PatientProfileSerializer(serializers.ModelSerializer):
 class PatientSerializer(serializers.ModelSerializer):
     """Used for listing and retrieving patient data"""
     profile = PatientProfileSerializer(source='patient_profile', read_only=True)
+    current_maternal_episode = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'first_name', 'last_name', 'middle_name', 
             'email', 'phone_number', 'address', 'state', 'is_active',
-            'profile', 'created_at', 'updated_at'
+            'profile', 'current_maternal_episode', 'created_at', 'updated_at'
         ]
         read_only_fields = fields
+
+    @extend_schema_field(
+        inline_serializer(
+            name='CurrentMaternalEpisodeSummary',
+            fields={
+                'episode_id': serializers.CharField(),
+                'status': serializers.CharField(), 
+                'last_menstrual_period': serializers.DateField(allow_null=True),
+                'expected_date_of_delivery': serializers.DateField(allow_null=True),
+                'gravida': serializers.IntegerField(),
+                'parity': serializers.IntegerField(),
+            },
+            allow_null=True
+        )
+    )
+    def get_current_maternal_episode(self, obj):
+        if hasattr(obj, 'prefetched_maternal_episodes'):
+            episode = obj.prefetched_maternal_episodes[0] if obj.prefetched_maternal_episodes else None
+        else:
+            episode = obj.pregnancies.filter(status__in=['ACTIVE', 'DELIVERED']).order_by('-created_at').first()
+
+        if episode:
+            return {
+                "episode_id": episode.episode_id,
+                "status": episode.status,
+                "last_menstrual_period": episode.last_menstrual_period,
+                "expected_date_of_delivery": episode.expected_date_of_delivery,
+                "gravida": episode.gravida,
+                "parity": episode.parity
+            }
+        return None
 
 class PatientCreateSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(required=False, allow_blank=True)

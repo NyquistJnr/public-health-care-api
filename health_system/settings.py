@@ -214,6 +214,8 @@ SPECTACULAR_SETTINGS = {
         'PrescriptionStatusEnum': 'prescriptions.models.Prescription.STATUS_CHOICES',
         'ReferralStatusEnum': 'referrals.models.Referral.STATUS_CHOICES',
         'ReferralTypeEnum': 'referrals.models.Referral.TYPE_CHOICES',
+        'PncVisitOutcomeEnum': 'maternal_care.models.PNCVisit.OUTCOME_CHOICES',
+        'PncNewbornAssessmentOutcomeEnum': 'maternal_care.models.PNCNewbornAssessment.OUTCOME_CHOICES',
     },
 }
 

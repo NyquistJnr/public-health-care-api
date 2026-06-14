@@ -5,11 +5,12 @@ from django.db.models import Q
 from django.contrib.auth.models import Group
 from django.utils import timezone
 from rest_framework import viewsets, status
+from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-
 from core.models import User, PatientProfile
+from .services import MaternalScheduleEngine
 from .models import (
     MaternalCareEpisode, ANCVisit, PNCVisit, 
     PNCNewbornAssessment, MaternalScheduleRule
@@ -18,9 +19,9 @@ from .serializers import (
     MaternalCareEpisodeSerializer, ANCVisitSerializer, 
     PNCVisitSerializer, PNCNewbornAssessmentSerializer,
     RecordDeliverySerializer, EpisodeBabySerializer,
-    MaternalScheduleRuleSerializer
+    MaternalScheduleRuleSerializer, AppointmentForANCSerializer,
+    AppointmentForPNCSerializer
 )
-from .services import MaternalScheduleEngine
 
 
 @extend_schema(tags=["Maternal Care Setup - State Admin and Doctor"])
@@ -307,3 +308,65 @@ class PNCNewbornAssessmentViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+@extend_schema(
+    tags=["Maternal Care"],
+    summary="Unified ANC Encounter (Auto-handles New vs. Returning Patients)",
+    description=(
+        "Creates an Appointment, an ANC Visit, and (if necessary) a new Pregnancy Episode in one call. "
+        "If the patient already has an ACTIVE pregnancy, they are automatically treated as a RETURN patient "
+        "and episode fields (LMP, Gravida, Parity) are ignored."
+    ),
+    request=AppointmentForANCSerializer,
+    responses={201: AppointmentForANCSerializer}
+)
+class AppointmentForANCView(APIView):
+    def post(self, request):
+        serializer = AppointmentForANCSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        
+        anc_visit = serializer.save()
+        
+        return Response({
+            "status": "success",
+            "message": "ANC Encounter recorded successfully.",
+            "data": {
+                "episode_id": anc_visit.episode.episode_id,
+                "attendance_type": anc_visit.attendance_type,
+                "appointment_id": anc_visit.appointment.appointment_id,
+                "next_visit_date": anc_visit.next_visit_date,
+                "visit_sequence_number": anc_visit.visit_sequence_number
+            }
+        }, status=status.HTTP_201_CREATED)
+
+@extend_schema(
+    tags=["Maternal Care"],
+    summary="Unified PNC Encounter (Auto-links to Episode & Handles Walk-ins)",
+    description=(
+        "Creates an Appointment, a PNC Visit, and Baby Assessments in one call. "
+        "It automatically links to the mother's DELIVERED episode. "
+        "If she is a Walk-in without an episode, provide 'walk_in_delivery_data' to auto-register her past delivery and babies."
+    ),
+    request=AppointmentForPNCSerializer,
+    responses={201: AppointmentForPNCSerializer}
+)
+class AppointmentForPNCView(APIView):
+    def post(self, request):
+        serializer = AppointmentForPNCSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        
+        pnc_visit = serializer.save()
+        
+        return Response({
+            "status": "success",
+            "message": "PNC Encounter recorded successfully.",
+            "data": {
+                "episode_id": pnc_visit.episode.episode_id,
+                "episode_status": pnc_visit.episode.status,
+                "attendance_type": pnc_visit.attendance_type,
+                "appointment_id": pnc_visit.appointment.appointment_id,
+                "next_visit_date": pnc_visit.next_visit_date,
+                "visit_sequence_number": pnc_visit.visit_sequence_number,
+                "assessments_recorded": pnc_visit.newborn_assessments.count()
+            }
+        }, status=status.HTTP_201_CREATED)

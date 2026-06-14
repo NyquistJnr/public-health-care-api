@@ -1,5 +1,5 @@
 # core/view_facility.py
-from django.db.models import Q
+from django.db.models import Q, Prefetch
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 from drf_spectacular.utils import extend_schema, OpenApiParameter
@@ -14,6 +14,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import User
+from maternal_care.models import MaternalCareEpisode
 from core.serializers import EmptyStatsSerializer
 from .serializers import PatientSerializer, PatientUpdateSerializer
 
@@ -176,8 +177,6 @@ class SpecificFacilityUserListView(generics.ListAPIView):
 
         return qs.order_by('-created_at')
 
-
-
 @extend_schema(
     tags=["Patient Management"], 
     summary="List all patients in the facility",
@@ -190,11 +189,17 @@ class PatientListView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        
+    
+        maternal_prefetch = Prefetch(
+            'pregnancies',
+            queryset=MaternalCareEpisode.objects.filter(status__in=['ACTIVE', 'DELIVERED']).order_by('-created_at'),
+            to_attr='prefetched_maternal_episodes'
+        )
+
         qs = User.objects.filter(
             role='PATIENT', 
             facility=user.facility
-        ).select_related('patient_profile__created_by')
+        ).select_related('patient_profile__created_by').prefetch_related(maternal_prefetch)
 
         search = self.request.query_params.get('search')
         if search:
@@ -215,7 +220,15 @@ class PatientListView(generics.ListAPIView):
 )
 class PatientDetailView(generics.RetrieveUpdateAPIView):
     def get_queryset(self):
-        return User.objects.filter(role='PATIENT', facility=self.request.user.facility)
+        maternal_prefetch = Prefetch(
+            'pregnancies',
+            queryset=MaternalCareEpisode.objects.filter(status__in=['ACTIVE', 'DELIVERED']).order_by('-created_at'),
+            to_attr='prefetched_maternal_episodes'
+        )
+        
+        return User.objects.filter(
+            role='PATIENT', facility=self.request.user.facility
+        ).select_related('patient_profile__created_by').prefetch_related(maternal_prefetch)
 
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:

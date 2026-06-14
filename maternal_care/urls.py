@@ -1,11 +1,11 @@
 # maternal_care/urls.py
-
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     MaternalCareEpisodeViewSet, ANCVisitViewSet, 
     PNCVisitViewSet, PNCNewbornAssessmentViewSet,
-    MaternalScheduleRuleViewSet
+    MaternalScheduleRuleViewSet, AppointmentForANCView,
+    AppointmentForPNCView
 )
 
 router = DefaultRouter()
@@ -16,5 +16,7 @@ router.register(r'pnc-visits', PNCVisitViewSet, basename='pnc-visit')
 router.register(r'pnc-newborn-assessments', PNCNewbornAssessmentViewSet, basename='pnc-newborn-assessment')
 
 urlpatterns = [
+    path('appointment-for-anc/', AppointmentForANCView.as_view(), name='unified-appointment-anc'),
+    path('appointment-for-pnc/', AppointmentForPNCView.as_view(), name='unified-appointment-pnc'),
     path('', include(router.urls)),
 ]
