@@ -15,6 +15,7 @@ class FacilitySerializer(serializers.ModelSerializer):
     it_admin_name = serializers.SerializerMethodField()
     staff_count = serializers.SerializerMethodField()
     patient_count = serializers.SerializerMethodField()
+    department_count = serializers.SerializerMethodField()
 
     manager_first_name = serializers.CharField(write_only=True)
     manager_last_name = serializers.CharField(write_only=True)
@@ -32,7 +33,8 @@ class FacilitySerializer(serializers.ModelSerializer):
             'id', 'code', 'name', 'facility_type', 'state', 'lga','ward', 'address', 'level',
             'manager_first_name', 'manager_last_name', 'manager_email', 'manager_phone', 
             'it_admin_first_name', 'it_admin_last_name', 'it_admin_email', 'it_admin_phone', 
-            'manager', 'it_admin', 'manager_name', 'it_admin_name', 'patient_count', 'staff_count', 
+            'manager', 'it_admin', 'manager_name', 'it_admin_name', 
+            'patient_count', 'staff_count', 'department_count', 
             'is_active', 'suspended_at', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'code', 'state', 'manager', 'it_admin', 'is_active', 'suspended_at', 'created_at', 'updated_at']
@@ -69,6 +71,12 @@ class FacilitySerializer(serializers.ModelSerializer):
             return count
         return None
 
+    def get_department_count(self, obj) -> int | None:
+        """Dynamically counts the active departments when a single facility is retrieved"""
+        if 'view' in self.context and self.context['view'].action == 'retrieve':
+            return obj.departments.filter(is_active=True).count()
+        return None
+
     def validate(self, attrs):
         m_email = attrs.get('manager_email')
         it_email = attrs.get('it_admin_email')
@@ -90,7 +98,6 @@ class FacilitySerializer(serializers.ModelSerializer):
         return super().validate(attrs)
 
     def _create_facility_user(self, email, first_name, last_name, phone, role, facility, creator):
-        """Helper method to create a user, assign them to the facility, and send the invite email."""
         user = User(
             username=email, email=email, first_name=first_name, 
             last_name=last_name, phone_number=phone, role=role, 
