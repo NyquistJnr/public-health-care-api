@@ -1,3 +1,5 @@
+# immunization/serializers.py
+
 from rest_framework import serializers
 from .models import ImmunizationRecord
 from core.models import PatientProfile

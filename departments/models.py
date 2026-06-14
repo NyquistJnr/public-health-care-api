@@ -1,3 +1,5 @@
+# departments/models.py
+
 from django.db import models
 from django.db.models import Q
 from core.models import BaseModel, User

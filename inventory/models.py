@@ -1,3 +1,5 @@
+# inventory/models.py
+
 from django.db import models
 from core.models import BaseModel
 from django.conf import settings

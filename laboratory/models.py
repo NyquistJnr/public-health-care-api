@@ -1,3 +1,5 @@
+# laboratory/models.py
+
 from django.db import models, transaction, connection
 from django.utils import timezone
 from core.models import BaseModel, User

@@ -1,3 +1,5 @@
+# core/exceptions.py
+
 import logging
 from rest_framework.views import exception_handler
 from django.core.exceptions import ValidationError as DjangoValidationError
