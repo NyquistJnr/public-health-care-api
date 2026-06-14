@@ -16,8 +16,8 @@ from .models import InventoryItem, ItemBatch, InventoryTransaction
 from facilities.models import Facility
 from .serializers import (
     InventoryItemSerializer, RefillItemSerializer, DispenseItemSerializer, 
-    FacilityDrugStatsSerializer, DrugDetailSerializer, ExpiringDrugBatchSerializer,
-    ExpiryAnalysisSerializer
+    DrugDetailSerializer, ExpiringDrugBatchSerializer, ExpiryAnalysisSerializer,
+    ComprehensiveInventoryStatsSerializer
 )
 from .services import ScheduleEngine
 
@@ -295,22 +295,6 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
         serializer = ExpiringDrugBatchSerializer(batches, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-
-@extend_schema(tags=["Inventory & Stock Management"], summary="Get User's Facility Inventory Stats", responses=FacilityDrugStatsSerializer)
-class UserFacilityDrugStatsView(APIView):
-    def get(self, request):
-        stats = calculate_facility_inventory_stats(request.user.facility)
-        return Response(stats)
-
-
-@extend_schema(tags=["Inventory & Stock Management"], summary="Get Specific Facility Inventory Stats", responses=FacilityDrugStatsSerializer)
-class SpecificFacilityDrugStatsView(APIView):
-    def get(self, request, facility_id):
-        facility = get_object_or_404(Facility, id=facility_id)
-        stats = calculate_facility_inventory_stats(facility)
-        return Response(stats)
-
-
 class DrugExpiryStatsView(APIView):
     @extend_schema(
         tags=["Inventory & Stock Management"],
@@ -366,3 +350,169 @@ class DrugExpiryStatsView(APIView):
         }
 
         return Response(data)
+
+@extend_schema(
+    tags=["Inventory & Stock Management"],
+    summary="Get Comprehensive Filterable Inventory Stats",
+    description="Returns aggregate counts based on optional filters. Supports dynamic expiring days threshold.",
+    parameters=[
+        OpenApiParameter(name='inventory_category', description='Filter by Category: DRUG, LAB_EQUIPMENT, CONSUMABLE', required=False, type=str),
+        OpenApiParameter(name='drug_classification', description='Filter by Class: NORMAL, IMMUNIZATION', required=False, type=str),
+        OpenApiParameter(name='start_date', description='Filter by item creation date start (YYYY-MM-DD)', required=False, type=str),
+        OpenApiParameter(name='end_date', description='Filter by item creation date end (YYYY-MM-DD)', required=False, type=str),
+        OpenApiParameter(name='expiring_days', description='Days threshold for "Expiring Soon" count. Defaults to 30.', required=False, type=int),
+    ],
+    responses=ComprehensiveInventoryStatsSerializer
+)
+class InventoryComprehensiveStatsView(APIView):
+    def get(self, request):
+        qs = InventoryItem.objects.filter(facility=request.user.facility)
+        
+        category = request.query_params.get('inventory_category')
+        classification = request.query_params.get('drug_classification')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        try:
+            expiring_days = int(request.query_params.get('expiring_days', 30))
+        except ValueError:
+            expiring_days = 30
+
+        if category:
+            qs = qs.filter(inventory_category=category.upper())
+        if classification:
+            qs = qs.filter(drug_classification=classification.upper())
+        if start_date:
+            qs = qs.filter(created_at__date__gte=start_date)
+        if end_date:
+            qs = qs.filter(created_at__date__lte=end_date)
+
+        today = timezone.now().date()
+        cutoff_date = today + timedelta(days=expiring_days)
+
+        active_batches_filter = Q(batches__is_active=True) & (
+            Q(batches__expiry_date__gte=today) | Q(batches__expiry_date__isnull=True)
+        )
+
+        qs = qs.annotate(
+            annotated_total_stock=Coalesce(
+                Sum('batches__remaining_quantity', filter=active_batches_filter), 0
+            ),
+            annotated_initial_stock=Coalesce(
+                Sum('batches__initial_quantity', filter=active_batches_filter), 0
+            )
+        ).annotate(
+            calculated_threshold=Case(
+                When(
+                    threshold_type='PERCENTAGE', 
+                    then=(F('annotated_initial_stock') * F('global_threshold')) / 100.0
+                ),
+                default=F('global_threshold'),
+                output_field=FloatField()
+            )
+        )
+
+        total_items = qs.count()
+        out_of_stock = qs.filter(annotated_total_stock=0).count()
+        low_stock = qs.filter(
+            annotated_total_stock__gt=0, 
+            annotated_total_stock__lte=F('calculated_threshold')
+        ).count()
+
+        expiring_soon = qs.filter(
+            batches__is_active=True,
+            batches__remaining_quantity__gt=0,
+            batches__expiry_date__gt=today,
+            batches__expiry_date__lte=cutoff_date
+        ).distinct().count()
+
+        return Response({
+            "total_items": total_items,
+            "low_stock_items": low_stock,
+            "out_of_stock_items": out_of_stock,
+            "expiring_soon_items": expiring_soon
+        })
+    
+class SpecificFacilityInventoryStatsView(APIView):
+    @extend_schema(
+    tags=["Inventory & Stock Management"],
+    summary="Get Specific Facility Comprehensive Stats",
+    description="Returns comprehensive inventory metrics for a specific facility.",
+    parameters=[
+        OpenApiParameter(name='inventory_category', description='Filter by Category: DRUG, LAB_EQUIPMENT, CONSUMABLE', required=False, type=str),
+        OpenApiParameter(name='drug_classification', description='Filter by Class: NORMAL, IMMUNIZATION', required=False, type=str),
+        OpenApiParameter(name='start_date', description='Filter by item creation date start (YYYY-MM-DD)', required=False, type=str),
+        OpenApiParameter(name='end_date', description='Filter by item creation date end (YYYY-MM-DD)', required=False, type=str),
+        OpenApiParameter(name='expiring_days', description='Days threshold for "Expiring Soon" count. Defaults to 30.', required=False, type=int),
+    ],
+    responses=ComprehensiveInventoryStatsSerializer,
+    operation_id="inventory_stats_specific_facility_retrieve"
+    )
+    def get(self, request, facility_id):
+        facility = get_object_or_404(Facility, id=facility_id)
+        qs = InventoryItem.objects.filter(facility=facility)
+        
+        category = request.query_params.get('inventory_category')
+        classification = request.query_params.get('drug_classification')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        try:
+            expiring_days = int(request.query_params.get('expiring_days', 30))
+        except ValueError:
+            expiring_days = 30
+
+        if category:
+            qs = qs.filter(inventory_category=category.upper())
+        if classification:
+            qs = qs.filter(drug_classification=classification.upper())
+        if start_date:
+            qs = qs.filter(created_at__date__gte=start_date)
+        if end_date:
+            qs = qs.filter(created_at__date__lte=end_date)
+
+        today = timezone.now().date()
+        cutoff_date = today + timedelta(days=expiring_days)
+
+        active_batches_filter = Q(batches__is_active=True) & (
+            Q(batches__expiry_date__gte=today) | Q(batches__expiry_date__isnull=True)
+        )
+
+        qs = qs.annotate(
+            annotated_total_stock=Coalesce(
+                Sum('batches__remaining_quantity', filter=active_batches_filter), 0
+            ),
+            annotated_initial_stock=Coalesce(
+                Sum('batches__initial_quantity', filter=active_batches_filter), 0
+            )
+        ).annotate(
+            calculated_threshold=Case(
+                When(
+                    threshold_type='PERCENTAGE', 
+                    then=(F('annotated_initial_stock') * F('global_threshold')) / 100.0
+                ),
+                default=F('global_threshold'),
+                output_field=FloatField()
+            )
+        )
+
+        total_items = qs.count()
+        out_of_stock = qs.filter(annotated_total_stock=0).count()
+        low_stock = qs.filter(
+            annotated_total_stock__gt=0, 
+            annotated_total_stock__lte=F('calculated_threshold')
+        ).count()
+
+        expiring_soon = qs.filter(
+            batches__is_active=True,
+            batches__remaining_quantity__gt=0,
+            batches__expiry_date__gt=today,
+            batches__expiry_date__lte=cutoff_date
+        ).distinct().count()
+
+        return Response({
+            "total_items": total_items,
+            "low_stock_items": low_stock,
+            "out_of_stock_items": out_of_stock,
+            "expiring_soon_items": expiring_soon
+        })

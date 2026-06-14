@@ -94,14 +94,6 @@ class DispenseItemSerializer(serializers.Serializer):
     previous_doses_count = serializers.IntegerField(default=0, help_text="Number of times patient has taken this previously")
     note = serializers.CharField(required=False, allow_blank=True)
 
-
-class FacilityDrugStatsSerializer(serializers.Serializer):
-    total_drugs = serializers.IntegerField(help_text="Total distinct inventory items")
-    low_stock_items = serializers.IntegerField()
-    out_of_stock = serializers.IntegerField()
-    expiring_soon = serializers.IntegerField(help_text="Items with batches expiring in <= 30 days")
-
-
 class ExpiringDrugBatchSerializer(serializers.ModelSerializer):
     item_name = serializers.CharField(source='item.name', read_only=True)
     item_type = serializers.CharField(source='item.item_type', read_only=True)
@@ -136,3 +128,9 @@ class ExpiryAnalysisSerializer(serializers.Serializer):
     expiring_60_days = serializers.IntegerField()
     expiring_90_days = serializers.IntegerField()
     total_tracked_batches = serializers.IntegerField(help_text="Total active batches with an expiry date")
+
+class ComprehensiveInventoryStatsSerializer(serializers.Serializer):
+    total_items = serializers.IntegerField(help_text="Total number of items matching filters")
+    low_stock_items = serializers.IntegerField(help_text="Items with stock > 0 but <= threshold")
+    out_of_stock_items = serializers.IntegerField(help_text="Items with 0 active stock")
+    expiring_soon_items = serializers.IntegerField(help_text="Items with batches expiring within the specified days")
