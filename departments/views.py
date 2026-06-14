@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
@@ -8,7 +8,8 @@ from core.models import User
 from .serializers import (
     DepartmentSerializer, 
     DepartmentMemberListSerializer, 
-    DepartmentMemberUpdateSerializer
+    DepartmentMemberUpdateSerializer,
+    FacilityDepartmentListSerializer
 )
 
 @extend_schema(tags=["Departments"])
@@ -134,3 +135,26 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         return Response({
             "detail": "Staff member(s) successfully removed from the department."
         }, status=status.HTTP_200_OK)
+
+@extend_schema(
+    tags=["Facility Departments"],
+    summary="Get All Departments for a Specific Facility",
+    parameters=[
+        OpenApiParameter(name='search', description='Search by department name', required=False, type=str),
+    ]
+)
+class SpecificFacilityDepartmentListView(generics.ListAPIView):
+    serializer_class = FacilityDepartmentListSerializer
+
+    def get_queryset(self):
+        facility_id = self.kwargs.get('facility_id')
+        
+        qs = Department.objects.filter(
+            facility_id=facility_id
+        ).select_related('facility', 'head')
+        
+        search = self.request.query_params.get('search')
+        if search:
+            qs = qs.filter(name__icontains=search)
+            
+        return qs.order_by('name')

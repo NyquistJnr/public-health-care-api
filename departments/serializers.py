@@ -54,3 +54,36 @@ class DepartmentMemberUpdateSerializer(serializers.Serializer):
         allow_empty=False,
         help_text="List of staff UUIDs to add or remove"
     )
+
+class FacilityDepartmentListSerializer(serializers.ModelSerializer):
+    facility_name = serializers.CharField(source='facility.name', read_only=True)
+    head_name = serializers.SerializerMethodField()
+    head_phone = serializers.SerializerMethodField()
+    head_email = serializers.SerializerMethodField()
+    head_role = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Department
+        fields = [
+            'id', 
+            'name', 
+            'facility_name', 
+            'head_name', 
+            'head_phone', 
+            'head_email', 
+            'head_role'
+        ]
+
+    def get_head_name(self, obj):
+        if obj.head:
+            return f"{obj.head.first_name} {obj.head.last_name}"
+        return "Unassigned"
+
+    def get_head_phone(self, obj):
+        return obj.head.phone_number if obj.head and obj.head.phone_number else "N/A"
+
+    def get_head_email(self, obj):
+        return obj.head.email if obj.head else "N/A"
+
+    def get_head_role(self, obj):
+        return obj.head.get_role_display() if obj.head else "N/A"
