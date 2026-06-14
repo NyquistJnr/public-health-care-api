@@ -51,3 +51,21 @@ def dispatch_external_referral(referral_id: str, request_host: str):
     )
     
     return res.message_id
+
+def dispatch_auth_email(task_type: str, email: str, context: dict, schema_name: str):
+    """
+    Pushes auth emails (Invites/Password Resets) to QStash to be sent in the background.
+    """
+    client = QStash(settings.QSTASH_TOKEN)
+    base_url = getattr(settings, 'WEBHOOK_BASE_URL', 'https://primary-health-care-api.vercel.app')
+    webhook_url = f"{base_url}/api/v1/system/qstash-webhook/"
+
+    client.message.publish_json(
+        url=webhook_url,
+        body={
+            "task_type": task_type,
+            "email": email,
+            "context": context,
+            "schema_name": schema_name
+        }
+    )

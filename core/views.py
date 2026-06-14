@@ -21,6 +21,9 @@ from .serializers import (
 from .models import User
 from django.http import JsonResponse
 from rest_framework.permissions import IsAuthenticated
+from core.tasks import dispatch_auth_email
+from django.db import connection
+from django.conf import settings
 
 @extend_schema(
     tags=["Authentication"],
@@ -58,16 +61,19 @@ class ForgotPasswordView(APIView):
         if user:
             uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
             token = PasswordResetTokenGenerator().make_token(user)
-            
-            subject = "Password Reset Request"
-            message = f"Hello {user.first_name},\n\nYour password reset details:\n\nUID: {uidb64}\nToken: {token}\n\nIf you did not request this, please ignore this email."
-            
-            send_mail(
-                subject,
-                message,
-                "noreply@health.gov.ng",
-                [user.email],
-                fail_silently=True,
+
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+            reset_link = f"{frontend_url}/auth/reset-password/?uid={uidb64}&token={token}"
+
+            message = (f"Hello {user.first_name},\n\nYou requested a password reset. "
+                   f"Click the link below to set a new password:\n\n"
+                   f"{reset_link}\n\nThis link will expire shortly.")
+                    
+            dispatch_auth_email(
+                task_type="AUTH_EMAIL",
+                email=email,
+                context={"subject": "Password Reset", "message": message},
+                schema_name=connection.schema_name
             )
 
         return Response({"detail": "If an account with that email exists, a reset token has been sent."}, status=status.HTTP_200_OK)
@@ -115,16 +121,19 @@ class UserInviteView(generics.CreateAPIView):
         user = serializer.save(created_by=self.request.user, facility=inviter_facility)
         uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
         token = PasswordResetTokenGenerator().make_token(user)
+
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        activate_link = f"{frontend_url}/auth/activate/?uid={uidb64}&token={token}"
         
-        subject = "Welcome to the Public Health Care System"
-        message = f"Hello {user.first_name},\n\nAn administrator has created an account for you.\n\nTo set your password and activate your account, use the following details in your app:\n\nUID: {uidb64}\nToken: {token}\n\nRole: {user.role}"
+        message = (f"Hello {user.first_name},\n\nAn administrator has created an account for you.\n\n"
+                f"Click the link below to set your password and activate your account:\n\n"
+                f"{activate_link}\n\nRole: {user.role}")
         
-        send_mail(
-            subject,
-            message,
-            "noreply@health.gov.ng",
-            [user.email],
-            fail_silently=True,
+        dispatch_auth_email(
+            task_type="AUTH_EMAIL",
+            email=user.email,
+            context={"subject": "Welcome to the PHC System", "message": message},
+            schema_name=connection.schema_name
         )
 
 @extend_schema(tags=["User Management"], summary="State Admin Invite New User to Facility")
@@ -137,16 +146,23 @@ class StateAdminUserInviteView(generics.CreateAPIView):
         user = serializer.save(created_by=self.request.user)
         uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
         token = PasswordResetTokenGenerator().make_token(user)
+
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        activate_link = f"{frontend_url}/auth/activate/?uid={uidb64}&token={token}"
+        subject = "Welcome to the Primary Health Care System"
         
-        subject = "Welcome to the Public Health Care System"
-        message = f"Hello {user.first_name},\n\nAn administrator has created an account for you.\n\nTo set your password and activate your account, use the following details in your app:\n\nUID: {uidb64}\nToken: {token}\n\nRole: {user.role}"
+        message = (f"Hello {user.first_name},\n\nAn administrator has created an account for you.\n\n"
+                f"Click the link below to set your password and activate your account:\n\n"
+                f"{activate_link}\n\nRole: {user.role}")
         
-        send_mail(
-            subject,
-            message,
-            "noreply@health.gov.ng",
-            [user.email],
-            fail_silently=True,
+        
+        facility_schema = user.facility.schema_name if hasattr(user.facility, 'schema_name') else connection.schema_name
+        
+        dispatch_auth_email(
+            task_type="AUTH_EMAIL",
+            email=user.email,
+            context={"subject": subject, "message": message},
+            schema_name=facility_schema
         )
 
 @extend_schema(tags=["User Profile"], summary="Get or Update Logged-in User Profile")

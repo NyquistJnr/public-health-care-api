@@ -76,4 +76,21 @@ class QStashWebhookView(APIView):
                     except Referral.DoesNotExist:
                         return Response({"error": "Referral not found"}, status=status.HTTP_404_NOT_FOUND)
 
+
+            if task_type == "AUTH_EMAIL":
+                email = payload.get("email")
+                ctx = payload.get("context")
+                
+                subject = ctx.get("subject")
+                message = ctx.get("message")
+                
+                send_mail(
+                    subject=subject,
+                    message=message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[email],
+                    fail_silently=False,
+                )
+                return Response({"status": "Auth email sent"}, status=200)
+
         return Response({"status": "Unknown task type ignored"}, status=status.HTTP_200_OK)
