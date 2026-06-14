@@ -1,19 +1,24 @@
 # doctors/views.py
-from datetime import timedelta
+from datetime import datetime, date
 from django.utils import timezone
 from django.db.models import Q
 from rest_framework import generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-
 from appointments.models import Appointment
 from laboratory.models import LabRequest, LabTest
-from maternal_care.models import ANCVisit
+from maternal_care.models import ANCVisit, PNCVisit
+from immunization.models import ImmunizationRecord
 from core.models import PatientProfile
 from referrals.models import Referral
 from laboratory.serializers import LabRequestReadSerializer
-from .serializers import DoctorStatsResponseSerializer, DoctorAlertsResponseSerializer
+from core.pagination import StandardResultsSetPagination
+
+from .serializers import (
+    DoctorStatsResponseSerializer, 
+    PaginatedDoctorAlertsResponseSerializer
+)
 
 @extend_schema(
     tags=["Doctor Dashboard"],
@@ -61,92 +66,129 @@ class DoctorPendingLabsView(generics.ListAPIView):
         ).order_by('-created_at')
 
 
-@extend_schema(tags=["Doctor Dashboard"], summary="Get Doctor Actionable Alerts")
+@extend_schema(
+    tags=["Doctor Dashboard"], 
+    summary="Get Unified Doctor Actionable Timeline",
+    parameters=[
+        OpenApiParameter(name='alert_type', description='Comma-separated list (e.g., ANC, LAB, REFERRAL, IMMUNIZATION)', required=False, type=str),
+        OpenApiParameter(name='page', description='Page number', required=False, type=int),
+        OpenApiParameter(name='page_size', description='Items per page', required=False, type=int),
+    ]
+)
 class DoctorAlertsView(APIView):
-    serializer_class = DoctorAlertsResponseSerializer
+    serializer_class = PaginatedDoctorAlertsResponseSerializer
 
     def get(self, request):
         user = request.user
-        facility = user.facility
         now = timezone.now()
-        yesterday = now - timedelta(days=1)
+        today = now.date()
+        alerts = []
 
-        response_data = {}
+        alert_type_param = request.query_params.get('alert_type')
+        if alert_type_param:
+            allowed_types = [t.strip().upper() for t in alert_type_param.split(',')]
+        else:
+            allowed_types = ['ANC', 'PNC', 'IMMUNIZATION', 'REFERRAL', 'LAB']
 
-        high_risk_pregnancies = ANCVisit.objects.filter(
-            created_by=user,
-            episode__status='ACTIVE'
-        ).exclude(risk_factors__isnull=True).exclude(risk_factors__exact='').count()
+        if 'ANC' in allowed_types:
+            anc_visits = ANCVisit.objects.filter(
+                episode__status='ACTIVE',
+                next_visit_date__isnull=False,
+                appointment__assigned_to=user 
+            ).select_related('episode__patient__patient_profile')
 
-        if high_risk_pregnancies > 0:
-            response_data['pregnancy'] = {
-                "high_risk_count": high_risk_pregnancies
-            }
+            for anc in anc_visits:
+                alerts.append({
+                    "alert_type": "ANC",
+                    "patient_name": anc.episode.patient.get_full_name(),
+                    "patient_id": anc.episode.patient.patient_profile.patient_id,
+                    "date": anc.next_visit_date,
+                    "status": "UPCOMING" if anc.next_visit_date >= today else "OVERDUE",
+                    "details": f"Sequence {anc.visit_sequence_number + 1} Due"
+                })
 
-        twenty_eight_days_ago = now.date() - timedelta(days=28)
-        due_neonates = PatientProfile.objects.filter(
-            user__facility=facility,
-            date_of_birth__gte=twenty_eight_days_ago,
-            user__immunizations__isnull=True
-        ).count()
+        if 'PNC' in allowed_types:
+            pnc_visits = PNCVisit.objects.filter(
+                episode__status__in=['ACTIVE', 'DELIVERED'],
+                next_visit_date__isnull=False,
+                appointment__assigned_to=user
+            ).select_related('episode__patient__patient_profile')
 
-        if due_neonates > 0:
-            response_data['immunization'] = {
-                "due_for_immunization": due_neonates
-            }
+            for pnc in pnc_visits:
+                alerts.append({
+                    "alert_type": "PNC",
+                    "patient_name": pnc.episode.patient.get_full_name(),
+                    "patient_id": pnc.episode.patient.patient_profile.patient_id,
+                    "date": pnc.next_visit_date,
+                    "status": "UPCOMING" if pnc.next_visit_date >= today else "OVERDUE",
+                    "details": f"Sequence {pnc.visit_sequence_number + 1} Due"
+                })
 
-        pending_referrals = Referral.objects.filter(referred_by=user, status='PENDING').order_by('-created_at')
-        pending_ref_count = pending_referrals.count()
+        if 'IMMUNIZATION' in allowed_types:
+            immunizations = ImmunizationRecord.objects.filter(
+                next_due_date__isnull=False,
+                administered_by=user
+            ).select_related('patient__patient_profile', 'vaccine_given')
+
+            for imm in immunizations:
+                alerts.append({
+                    "alert_type": "IMMUNIZATION",
+                    "patient_name": imm.patient.get_full_name(),
+                    "patient_id": imm.patient.patient_profile.patient_id,
+                    "date": imm.next_due_date,
+                    "status": "UPCOMING" if imm.next_due_date >= today else "OVERDUE",
+                    "details": f"{imm.vaccine_given.name} Dose {imm.dose_number + 1}"
+                })
+
+        if 'REFERRAL' in allowed_types:
+            referrals = Referral.objects.filter(referred_by=user).select_related(
+                'patient__patient_profile', 'receiving_facility'
+            )
+
+            for ref in referrals:
+                target_name = ref.receiving_facility.name if ref.receiving_facility else ref.get_destination_level_display()
+                alerts.append({
+                    "alert_type": "REFERRAL",
+                    "patient_name": ref.patient.get_full_name(),
+                    "patient_id": ref.patient.patient_profile.patient_id,
+                    "date": ref.updated_at,
+                    "status": ref.status,
+                    "details": f"To: {target_name}"
+                })
+
+        if 'LAB' in allowed_types:
+            labs = LabTest.objects.filter(
+                lab_request__requested_by=user,
+                test_status__in=['PENDING', 'PROCESSING', 'RESULT_READY']
+            ).select_related('lab_request__patient__patient_profile')
+
+            for lab in labs:
+                target_date = lab.result_date if lab.result_date else lab.updated_at
+                alerts.append({
+                    "alert_type": "LAB",
+                    "patient_name": lab.lab_request.patient.get_full_name(),
+                    "patient_id": lab.lab_request.patient.patient_profile.patient_id,
+                    "date": target_date,
+                    "status": lab.test_status,
+                    "details": f"Test: {lab.test_name}"
+                })
+
+        def get_datetime_diff(item_date):
+            if not item_date:
+                return float('inf') 
+            
+            if isinstance(item_date, date) and not isinstance(item_date, datetime):
+                item_date = timezone.make_aware(datetime.combine(item_date, datetime.min.time()))
+                
+            return abs((item_date - now).total_seconds())
+
+        alerts.sort(key=lambda x: get_datetime_diff(x['date']))
+
+        paginator = StandardResultsSetPagination()
+        paginated_alerts = paginator.paginate_queryset(alerts, request, view=self)
         
-        if pending_ref_count > 0:
-            top_referrals = pending_referrals[:5]
-            response_data['referrals'] = {
-                "total_pending": pending_ref_count,
-                "recent_pending": [
-                    {
-                        "referral_id": ref.referral_id,
-                        "patient_name": ref.patient.get_full_name(),
-                        "target_facility": ref.receiving_facility.name,
-                        "date": ref.created_at
-                    } for ref in top_referrals
-                ]
-            }
+        return paginator.get_paginated_response(paginated_alerts)
 
-        ready_tests = LabTest.objects.filter(
-            lab_request__requested_by=user, 
-            test_status='RESULT_READY', 
-            result_date__gte=yesterday
-        ).order_by('-result_date')
-
-        pending_requests = LabRequest.objects.filter(
-            requested_by=user, 
-            status__in=['PENDING', 'PARTIAL']
-        ).order_by('-created_at')
-
-        ready_count = ready_tests.count()
-        pending_lab_count = pending_requests.count()
-
-        if ready_count > 0 or pending_lab_count > 0:
-            response_data['labs'] = {
-                "ready_24h_count": ready_count,
-                "pending_count": pending_lab_count,
-                "recent_ready_tests": [
-                    {
-                        "test_name": test.test_name,
-                        "patient_name": test.lab_request.patient.get_full_name(),
-                        "result_date": test.result_date
-                    } for test in ready_tests[:5]
-                ],
-                "recent_pending_requests": [
-                    {
-                        "request_id": req.request_id,
-                        "patient_name": req.patient.get_full_name(),
-                        "date_ordered": req.created_at
-                    } for req in pending_requests[:5]
-                ]
-            }
-
-        return Response(response_data)
 
 @extend_schema(
     tags=["Doctor Dashboard"], 

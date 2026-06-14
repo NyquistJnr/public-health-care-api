@@ -1,6 +1,5 @@
 # doctors/serializers.py
 from rest_framework import serializers
-from laboratory.serializers import LabRequestReadSerializer
 
 class DoctorStatsResponseSerializer(serializers.Serializer):
     waiting = serializers.IntegerField()
@@ -8,24 +7,18 @@ class DoctorStatsResponseSerializer(serializers.Serializer):
     completed = serializers.IntegerField()
     pending_labs = serializers.IntegerField()
 
-class PregnancyAlertSerializer(serializers.Serializer):
-    high_risk_count = serializers.IntegerField()
+class UnifiedAlertItemSerializer(serializers.Serializer):
+    alert_type = serializers.CharField(help_text="ANC, PNC, IMMUNIZATION, REFERRAL, LAB")
+    patient_name = serializers.CharField()
+    patient_id = serializers.CharField(required=False, allow_null=True)
+    date = serializers.DateTimeField(help_text="The target date or last updated timestamp")
+    status = serializers.CharField()
+    details = serializers.CharField(help_text="Contextual info like 'Test Name' or 'Facility Name'")
 
-class ImmunizationAlertSerializer(serializers.Serializer):
-    due_for_immunization = serializers.IntegerField()
-
-class ReferralAlertSerializer(serializers.Serializer):
-    total_pending = serializers.IntegerField()
-    recent_pending = serializers.ListField(child=serializers.DictField())
-
-class LabAlertSerializer(serializers.Serializer):
-    ready_24h_count = serializers.IntegerField()
-    pending_count = serializers.IntegerField()
-    recent_ready_tests = serializers.ListField(child=serializers.DictField())
-    recent_pending_requests = serializers.ListField(child=serializers.DictField())
-
-class DoctorAlertsResponseSerializer(serializers.Serializer):
-    pregnancy = PregnancyAlertSerializer(required=False)
-    immunization = ImmunizationAlertSerializer(required=False)
-    referrals = ReferralAlertSerializer(required=False)
-    labs = LabAlertSerializer(required=False)
+class PaginatedDoctorAlertsResponseSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    total_pages = serializers.IntegerField()
+    current_page = serializers.IntegerField()
+    next = serializers.URLField(allow_null=True, required=False)
+    previous = serializers.URLField(allow_null=True, required=False)
+    results = UnifiedAlertItemSerializer(many=True, help_text="Sorted by closest to current date/time")
