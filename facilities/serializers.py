@@ -15,7 +15,7 @@ class FacilitySerializer(serializers.ModelSerializer):
     it_admin_name = serializers.SerializerMethodField()
     staff_count = serializers.SerializerMethodField()
     patient_count = serializers.SerializerMethodField()
-    department_count = serializers.SerializerMethodField()
+    department_count = serializers.SerializerMethodField() # New
 
     manager_first_name = serializers.CharField(write_only=True)
     manager_last_name = serializers.CharField(write_only=True)
@@ -34,7 +34,7 @@ class FacilitySerializer(serializers.ModelSerializer):
             'manager_first_name', 'manager_last_name', 'manager_email', 'manager_phone', 
             'it_admin_first_name', 'it_admin_last_name', 'it_admin_email', 'it_admin_phone', 
             'manager', 'it_admin', 'manager_name', 'it_admin_name', 
-            'patient_count', 'staff_count', 'department_count', 
+            'patient_count', 'staff_count', 'department_count',
             'is_active', 'suspended_at', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'code', 'state', 'manager', 'it_admin', 'is_active', 'suspended_at', 'created_at', 'updated_at']
@@ -54,28 +54,20 @@ class FacilitySerializer(serializers.ModelSerializer):
             return f"{obj.it_admin.first_name} {obj.it_admin.last_name}".strip()
         return None
 
-    def get_patient_count(self, obj) -> int | None:
-        if 'view' in self.context and self.context['view'].action == 'retrieve':
-            return 0
-        return None
+    def get_patient_count(self, obj) -> int:
+        if hasattr(obj, 'annotated_patient_count'):
+            return obj.annotated_patient_count
+        return obj.staff_members.filter(role='PATIENT', is_active=True).count()
 
-    def get_staff_count(self, obj) -> int | None:
-        if 'view' in self.context and self.context['view'].action == 'retrieve':
-            count = obj.staff_members.filter(is_active=True).count()
-            
-            if obj.manager and obj.manager.is_active:
-                is_manager_in_staff_list = obj.staff_members.filter(id=obj.manager.id).exists()
-                if not is_manager_in_staff_list:
-                    count += 1
-                    
-            return count
-        return None
+    def get_staff_count(self, obj) -> int:
+        if hasattr(obj, 'annotated_staff_count'):
+            return obj.annotated_staff_count
+        return obj.staff_members.exclude(role='PATIENT').filter(is_active=True).count()
 
-    def get_department_count(self, obj) -> int | None:
-        """Dynamically counts the active departments when a single facility is retrieved"""
-        if 'view' in self.context and self.context['view'].action == 'retrieve':
-            return obj.departments.filter(is_active=True).count()
-        return None
+    def get_department_count(self, obj) -> int:
+        if hasattr(obj, 'annotated_department_count'):
+            return obj.annotated_department_count
+        return obj.departments.filter(is_active=True).count()
 
     def validate(self, attrs):
         m_email = attrs.get('manager_email')

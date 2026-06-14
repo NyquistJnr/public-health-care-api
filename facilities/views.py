@@ -1,14 +1,17 @@
 # facilities/views.py
 from rest_framework import viewsets
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-from .models import Facility
-from .serializers import FacilitySerializer
+from django.db.models import Q, Count
+from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from django.db import connection
+
+from .models import Facility
+from .serializers import FacilitySerializer
 from core.serializers import StatusUpdateSerializer, EmptyStatsSerializer
-from django.utils import timezone
-from django.db.models import Q
+
 
 @extend_schema(tags=["Facility Management"])
 class FacilityViewSet(viewsets.ModelViewSet):
@@ -68,6 +71,24 @@ class FacilityViewSet(viewsets.ModelViewSet):
                 Q(manager_email__icontains=search) |
                 Q(lga__icontains=search)
             )
+            
+        qs = qs.annotate(
+            annotated_staff_count=Count(
+                'staff_members', 
+                filter=~Q(staff_members__role='PATIENT') & Q(staff_members__is_active=True), 
+                distinct=True
+            ),
+            annotated_patient_count=Count(
+                'staff_members', 
+                filter=Q(staff_members__role='PATIENT') & Q(staff_members__is_active=True), 
+                distinct=True
+            ),
+            annotated_department_count=Count(
+                'departments', 
+                filter=Q(departments__is_active=True), 
+                distinct=True
+            )
+        )
             
         return qs
 
