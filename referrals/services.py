@@ -12,10 +12,10 @@ def compile_and_send_external_referral(referral: Referral, request_host: str):
     token_accept = signer.sign(f"{referral.id}:ACCEPTED")
     token_reject = signer.sign(f"{referral.id}:REJECTED")
 
-    base_url = f"https://{request_host}" if request_host else getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
-    
-    accept_link = f"{base_url}/api/v1/referrals/external-action/?token={token_accept}"
-    reject_link = f"{base_url}/api/v1/referrals/external-action/?token={token_reject}"
+    frontend_base_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+
+    accept_link = f"{frontend_base_url}/referrals/action/?token={token_accept}"
+    reject_link = f"{frontend_base_url}/referrals/action/?token={token_reject}"
 
     consultation = getattr(appointment, 'consultation', None)
     vitals = appointment.vitals.first()

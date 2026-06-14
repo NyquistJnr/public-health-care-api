@@ -10,7 +10,7 @@ from django.db.models import Q
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from .models import Referral
 from .serializers import ReferralReadSerializer, ReferralCreateSerializer, ReferralStatusUpdateSerializer
-from .services import compile_and_send_external_referral
+from core.tasks import dispatch_external_referral
 
 @extend_schema(tags=["Patient Referrals"])
 class ReferralViewSet(viewsets.ModelViewSet):
@@ -26,7 +26,7 @@ class ReferralViewSet(viewsets.ModelViewSet):
 
         if referral.destination_level in ['SECONDARY', 'HIGHER', 'OTHER']:
             request_host = self.request.get_host()
-            compile_and_send_external_referral(referral, request_host)
+            dispatch_external_referral(referral.id, request_host)
 
     @extend_schema(
         summary="List & Filter Referrals (Inbound & Outbound)",

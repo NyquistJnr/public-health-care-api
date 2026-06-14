@@ -3,7 +3,7 @@ from django.urls import path
 from .views import (
     CustomLoginView, UserInviteView, StateAdminUserInviteView,
     CustomTokenRefreshView, ForgotPasswordView, ResetPasswordView,
-    UserProfileView
+    UserProfileView   
 )
 from .view_facility import (
     FacilityUserListView, PatientCreateView, FacilityUserStatsView,
@@ -12,6 +12,8 @@ from .view_facility import (
 from .view_audit_log import (
     AuditLogListView, NotificationListView, NotificationMarkReadView
 )
+
+from .view_qstash_webhook import QStashWebhookView
 
 auth_patterns = [
     path('login/', CustomLoginView.as_view(), name='token_obtain_pair'),
@@ -40,6 +42,7 @@ system_patterns = [
     path('audit-logs/', AuditLogListView.as_view(), name='audit_logs'),
     path('notifications/', NotificationListView.as_view(), name='notifications'),
     path('notifications/<uuid:pk>/mark-read/', NotificationMarkReadView.as_view(), name='notification_mark_read'),
+    path('qstash-webhook/', QStashWebhookView.as_view(), name='qstash_webhook'),
 ]
 
 urlpatterns = auth_patterns + user_management_patterns + patient_patterns + system_patterns
