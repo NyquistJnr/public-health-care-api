@@ -1,3 +1,4 @@
+# prescriptions/models.py
 from django.db import models, transaction, connection
 from core.models import BaseModel, User
 from appointments.models import Appointment
@@ -24,7 +25,7 @@ class Prescription(BaseModel):
     prescribed_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name='authored_prescriptions')
     
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='NORMAL')
-    instructions = models.TextField(blank=True, null=True, help_text="General instructions for the pharmacist or patient")
+    instructions = models.TextField(blank=True, null=True, help_text="General instructions for the pharmacist or patient for the overall prescription")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
 
     def save(self, *args, **kwargs):
@@ -52,11 +53,13 @@ class PrescriptionItem(BaseModel):
         limit_choices_to={'inventory_category': 'DRUG'},
         help_text="Links directly to the generalized Inventory Item."
     )
-    
     custom_drug_name = models.CharField(max_length=255, blank=True, null=True, help_text="Used only if the drug is not in inventory")
+    
     dosage = models.CharField(max_length=100, help_text="e.g., 500mg, 10ml")
     frequency = models.CharField(max_length=100, help_text="e.g., BD (Twice daily), TDS (Thrice daily)")
     duration = models.CharField(max_length=100, help_text="e.g., 5 Days, 1 Month")
+    route = models.CharField(max_length=100, default='Oral', help_text="e.g., Oral, Intravenous (IV), Intramuscular (IM), Topical")
+    special_instructions = models.TextField(blank=True, null=True, help_text="Specific instructions for this exact medication (e.g., Take with food)")
 
     def get_medication_name(self):
         """Returns the actual inventory drug name, or the custom text if it's external."""

@@ -13,12 +13,21 @@ class InventoryItem(BaseModel):
         ('IMMUNIZATION', 'Immunization / Vaccine'),
     )
 
+    THRESHOLD_TYPE_CHOICES = (
+        ('ABSOLUTE', 'Absolute Quantity'),
+        ('PERCENTAGE', 'Percentage of Initial Stock')
+    )
+
     facility = models.ForeignKey('facilities.Facility', on_delete=models.CASCADE, related_name='inventory_items')
     name = models.CharField(max_length=255)
     inventory_category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='DRUG')
     drug_classification = models.CharField(max_length=20, choices=DRUG_CLASS_CHOICES, null=True, blank=True)
     item_type = models.CharField(max_length=50, help_text="e.g., Tablets, Vials, Pieces, Packs")
-    global_threshold = models.PositiveIntegerField(default=10, help_text="Level to trigger Low Stock warning")
+    threshold_type = models.CharField(max_length=20, choices=THRESHOLD_TYPE_CHOICES, default='ABSOLUTE')
+    global_threshold = models.PositiveIntegerField(
+        default=10, 
+        help_text="If type is ABSOLUTE, this is exact quantity. If PERCENTAGE, this is 1-100."
+    )
     schedule_rules = models.JSONField(
         blank=True, 
         null=True, 

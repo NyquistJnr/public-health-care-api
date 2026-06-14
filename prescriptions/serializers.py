@@ -8,7 +8,10 @@ class PrescriptionItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PrescriptionItem
-        fields = ['id', 'inventory_item', 'custom_drug_name', 'medication_name', 'dosage', 'frequency', 'duration']
+        fields = [
+            'id', 'inventory_item', 'custom_drug_name', 'medication_name', 
+            'dosage', 'frequency', 'duration', 'route', 'special_instructions'
+        ]
 
     def validate(self, attrs):
         item = attrs.get('inventory_item')

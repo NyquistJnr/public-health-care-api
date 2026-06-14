@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db import transaction
-from django.db.models import Sum, Q, Count, F
+from django.db.models import Sum, Q, F, Case, When, FloatField, Count
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from datetime import timedelta
@@ -22,7 +22,6 @@ from .serializers import (
 from .services import ScheduleEngine
 
 def calculate_facility_inventory_stats(facility):
-    """Calculates high-level stats for the dashboard."""
     items = InventoryItem.objects.filter(facility=facility)
     today = timezone.now().date()
     thirty_days_from_now = today + timedelta(days=30)
@@ -32,14 +31,27 @@ def calculate_facility_inventory_stats(facility):
     out_of_stock_count = 0
     
     for item in items:
-        stock = item.batches.filter(
+        active_batches = item.batches.filter(
             Q(expiry_date__gte=today) | Q(expiry_date__isnull=True),
             is_active=True
-        ).aggregate(total=Sum('remaining_quantity'))['total'] or 0
+        )
         
-        if stock == 0:
+        stock_data = active_batches.aggregate(
+            remaining=Sum('remaining_quantity'),
+            initial=Sum('initial_quantity')
+        )
+        
+        total_stock = stock_data['remaining'] or 0
+        total_initial = stock_data['initial'] or 0
+        
+        if item.threshold_type == 'PERCENTAGE':
+            calculated_threshold = (total_initial * item.global_threshold) / 100
+        else:
+            calculated_threshold = item.global_threshold
+
+        if total_stock == 0:
             out_of_stock_count += 1
-        elif stock <= item.global_threshold:
+        elif total_stock <= calculated_threshold:
             low_stock_count += 1
 
     expiring_soon_count = InventoryItem.objects.filter(
@@ -51,7 +63,7 @@ def calculate_facility_inventory_stats(facility):
     ).distinct().count()
 
     return {
-        "total_drugs": total_items,
+        "total_drugs": total_items, 
         "low_stock_items": low_stock_count,
         "out_of_stock": out_of_stock_count,
         "expiring_soon": expiring_soon_count
@@ -124,8 +136,19 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
 
             queryset = queryset.annotate(
                 annotated_total_stock=Coalesce(
-                    Sum('batches__remaining_quantity', filter=active_batches_filter),
-                    0
+                    Sum('batches__remaining_quantity', filter=active_batches_filter), 0
+                ),
+                annotated_initial_stock=Coalesce(
+                    Sum('batches__initial_quantity', filter=active_batches_filter), 0
+                )
+            ).annotate(
+                calculated_threshold=Case(
+                    When(
+                        threshold_type='PERCENTAGE', 
+                        then=(F('annotated_initial_stock') * F('global_threshold')) / 100.0
+                    ),
+                    default=F('global_threshold'),
+                    output_field=FloatField()
                 )
             )
 
@@ -135,10 +158,10 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
             elif status_param == 'LOW_STOCK':
                 queryset = queryset.filter(
                     annotated_total_stock__gt=0, 
-                    annotated_total_stock__lte=F('global_threshold')
+                    annotated_total_stock__lte=F('calculated_threshold')
                 )
             elif status_param == 'IN_STOCK':
-                queryset = queryset.filter(annotated_total_stock__gt=F('global_threshold'))
+                queryset = queryset.filter(annotated_total_stock__gt=F('calculated_threshold'))
 
         return queryset.order_by('name')
 

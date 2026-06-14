@@ -20,7 +20,7 @@ class InventoryItemSerializer(serializers.ModelSerializer):
         model = InventoryItem
         fields = [
             'id', 'name', 'inventory_category', 'drug_classification', 
-            'item_type', 'global_threshold', 'schedule_rules', 
+            'item_type', 'threshold_type', 'global_threshold', 'schedule_rules', 
             'total_stock', 'status'
         ]
 
@@ -35,10 +35,29 @@ class InventoryItemSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.CharField())
     def get_status(self, obj):
-        stock = self.get_total_stock(obj)
-        if stock == 0:
+        today = timezone.now().date()
+        
+        active_batches = obj.batches.filter(
+            Q(expiry_date__gte=today) | Q(expiry_date__isnull=True),
+            is_active=True
+        )
+        
+        stock_data = active_batches.aggregate(
+            remaining=Sum('remaining_quantity'),
+            initial=Sum('initial_quantity')
+        )
+        
+        total_stock = stock_data['remaining'] or 0
+        total_initial = stock_data['initial'] or 0
+
+        if obj.threshold_type == 'PERCENTAGE':
+            calculated_threshold = (total_initial * obj.global_threshold) / 100
+        else:
+            calculated_threshold = obj.global_threshold
+
+        if total_stock == 0:
             return "OUT_OF_STOCK"
-        elif stock <= obj.global_threshold:
+        elif total_stock <= calculated_threshold:
             return "LOW_STOCK"
         return "IN_STOCK"
 
