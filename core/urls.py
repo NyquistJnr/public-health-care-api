@@ -6,7 +6,7 @@ from .views import (
     UserProfileView   
 )
 from .view_facility import (
-    FacilityUserListView, PatientCreateView, FacilityUserStatsView,
+    FacilityUserListView, PatientCreateView, FacilityUserStatsView, PatientChildrenListView,
     UserStatusToggleView, SpecificFacilityUserListView, PatientListView, PatientDetailView
 )
 from .view_audit_log import (
@@ -35,6 +35,7 @@ user_management_patterns = [
 patient_patterns = [
     path('', PatientListView.as_view(), name='patient_list'),
     path('<uuid:pk>/', PatientDetailView.as_view(), name='patient_detail'),
+    path('<uuid:patient_id>/children/', PatientChildrenListView.as_view(), name='patient_children'),
     path('register/', PatientCreateView.as_view(), name='patient_register'),
 ]
 

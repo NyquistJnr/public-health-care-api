@@ -234,3 +234,19 @@ class PatientDetailView(generics.RetrieveUpdateAPIView):
         if self.request.method in ['PUT', 'PATCH']:
             return PatientUpdateSerializer
         return PatientSerializer
+
+@extend_schema(
+    tags=["Patient Management"], 
+    summary="Get all children registered to a patient",
+)
+class PatientChildrenListView(generics.ListAPIView):
+    serializer_class = PatientSerializer
+
+    def get_queryset(self):
+        mother_id = self.kwargs.get('patient_id')
+        
+        return User.objects.filter(
+            role='PATIENT',
+            patient_profile__mother_id=mother_id,
+            facility=self.request.user.facility
+        ).select_related('patient_profile')
