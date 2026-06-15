@@ -60,8 +60,8 @@ class PrescriptionCreateSerializer(serializers.ModelSerializer):
         validated_data['patient'] = appointment.patient
         
         validated_data['prescribed_by'] = user
-        
-        prescription = Prescription.objects.create(created_by=user, **validated_data)
+
+        prescription = Prescription.objects.create(**validated_data)
 
         PrescriptionItem.objects.bulk_create([
             PrescriptionItem(prescription=prescription, created_by=user, **item) 

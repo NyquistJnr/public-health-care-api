@@ -63,7 +63,7 @@ class ForgotPasswordView(APIView):
             token = PasswordResetTokenGenerator().make_token(user)
 
             frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
-            reset_link = f"{frontend_url}/auth/reset-password/?uid={uidb64}&token={token}"
+            reset_link = f"{frontend_url}/reset-password/?uid={uidb64}&token={token}"
 
             message = (f"Hello {user.first_name},\n\nYou requested a password reset. "
                    f"Click the link below to set a new password:\n\n"
@@ -123,7 +123,7 @@ class UserInviteView(generics.CreateAPIView):
         token = PasswordResetTokenGenerator().make_token(user)
 
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
-        activate_link = f"{frontend_url}/auth/activate/?uid={uidb64}&token={token}"
+        activate_link = f"{frontend_url}/activate/?uid={uidb64}&token={token}"
         
         message = (f"Hello {user.first_name},\n\nAn administrator has created an account for you.\n\n"
                 f"Click the link below to set your password and activate your account:\n\n"
@@ -148,7 +148,7 @@ class StateAdminUserInviteView(generics.CreateAPIView):
         token = PasswordResetTokenGenerator().make_token(user)
 
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
-        activate_link = f"{frontend_url}/auth/activate/?uid={uidb64}&token={token}"
+        activate_link = f"{frontend_url}/activate/?uid={uidb64}&token={token}"
         subject = "Welcome to the Primary Health Care System"
         
         message = (f"Hello {user.first_name},\n\nAn administrator has created an account for you.\n\n"
