@@ -19,11 +19,15 @@ from core.serializers import EmptyStatsSerializer
 from .serializers import PatientSerializer, PatientUpdateSerializer
 
 @extend_schema(
-    tags=["Facility Management"], 
+    tags=["Facility Management"],
     summary="List Facility Users (Staff & Patients)",
     parameters=[
         OpenApiParameter(name='search', description='Search by name, email, or phone', required=False, type=str),
-        OpenApiParameter(name='role', description='Filter by role (DOCTOR, NURSE) or use "STAFF" for all employees', required=False, type=str),
+        OpenApiParameter(name='role', description=(
+            'Filter by role (DOCTOR, NURSE, CHEW, etc.), '
+            '"STAFF" for all non-patient employees, or '
+            '"MEDICALS" for Doctors, Nurses, and CHEWs only.'
+        ), required=False, type=str),
         OpenApiParameter(name='start_date', description='Filter by start date (YYYY-MM-DD)', required=False, type=str),
         OpenApiParameter(name='end_date', description='Filter by end date (YYYY-MM-DD)', required=False, type=str),
         OpenApiParameter(name='is_active', description='Filter by active status (true/false)', required=False, type=str),
@@ -51,10 +55,13 @@ class FacilityUserListView(generics.ListAPIView):
 
         role = self.request.query_params.get('role')
         if role:
-            if role.upper() == 'STAFF':
+            role_upper = role.upper()
+            if role_upper == 'STAFF':
                 qs = qs.exclude(role='PATIENT')
+            elif role_upper == 'MEDICALS':
+                qs = qs.filter(role__in=['DOCTOR', 'NURSE', 'CHEW'])
             else:
-                qs = qs.filter(role=role.upper())
+                qs = qs.filter(role=role_upper)
 
         start_date = self.request.query_params.get('start_date')
         end_date = self.request.query_params.get('end_date')
@@ -137,10 +144,14 @@ class FacilityUserStatsView(APIView):
         })
 
 @extend_schema(
-    tags=["Facility Management"], 
+    tags=["Facility Management"],
     summary="List Users for a Specific Facility",
     parameters=[
-        OpenApiParameter(name='role', description='Filter by role (e.g., DOCTOR, NURSE, PATIENT) or use "STAFF" for everyone except patients.', required=False, type=str),
+        OpenApiParameter(name='role', description=(
+            'Filter by role (e.g., DOCTOR, NURSE, PATIENT), '
+            '"STAFF" for everyone except patients, or '
+            '"MEDICALS" for Doctors, Nurses, and CHEWs only.'
+        ), required=False, type=str),
         OpenApiParameter(name='search', description='Search by name, email, or phone', required=False, type=str),
         OpenApiParameter(name='is_active', description='Filter by active status (true/false)', required=False, type=str),
     ]
@@ -155,11 +166,13 @@ class SpecificFacilityUserListView(generics.ListAPIView):
         qs = User.objects.filter(facility_id=facility_id)
         role = self.request.query_params.get('role')
         if role:
-            role = role.upper()
-            if role == 'STAFF':
+            role_upper = role.upper()
+            if role_upper == 'STAFF':
                 qs = qs.exclude(role='PATIENT')
+            elif role_upper == 'MEDICALS':
+                qs = qs.filter(role__in=['DOCTOR', 'NURSE', 'CHEW'])
             else:
-                qs = qs.filter(role=role)
+                qs = qs.filter(role=role_upper)
 
         search = self.request.query_params.get('search')
         if search:

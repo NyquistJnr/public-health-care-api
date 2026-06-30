@@ -9,7 +9,7 @@ from drf_spectacular.utils import extend_schema, extend_schema_view, inline_seri
 from .models import ImmunizationRecord
 from .serializers import FastTrackImmunizationSerializer, ImmunizationReadSerializer, ImmunizationUpdateSerializer
 from core.models import User, PatientProfile
-from appointments.models import Appointment
+from appointments.models import Appointment, Vitals
 from inventory.models import ItemBatch, InventoryTransaction
 from inventory.services import ScheduleEngine
 from django.db.models import Q
@@ -159,6 +159,17 @@ class ImmunizationViewSet(viewsets.ModelViewSet):
             reason_for_visit=f"Vaccinations administered: {vaccine_names}",
             created_by=user
         )
+
+        vitals_data = data.get('vitals')
+        if vitals_data:
+            clean_vitals = {k: v for k, v in vitals_data.items() if v is not None and v != ''}
+            if clean_vitals:
+                Vitals.objects.create(
+                    appointment=appointment,
+                    patient=patient_record,
+                    created_by=user,
+                    **clean_vitals,
+                )
 
         administered_details = []
         for vaccine in vaccines_to_give:

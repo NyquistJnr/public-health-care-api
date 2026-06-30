@@ -1,5 +1,6 @@
 # immunization/serializers.py
 
+from django.core.validators import RegexValidator
 from rest_framework import serializers
 from .models import ImmunizationRecord
 from core.models import PatientProfile
@@ -13,7 +14,23 @@ class NewPatientFastTrackSerializer(serializers.Serializer):
     sex = serializers.ChoiceField(choices=PatientProfile.SEX_CHOICES)
     next_of_kin_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
     next_of_kin_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
-    next_of_kin_relationship = serializers.CharField(max_length=100, required=False, allow_blank=True) # NEW
+    next_of_kin_relationship = serializers.CharField(max_length=100, required=False, allow_blank=True)
+
+
+class ImmunizationVitalsSerializer(serializers.Serializer):
+    """Optional vitals recorded at the time of vaccination."""
+    temperature = serializers.DecimalField(max_digits=4, decimal_places=1, required=False, allow_null=True)
+    blood_pressure = serializers.CharField(
+        max_length=7, required=False, allow_null=True, allow_blank=True,
+        validators=[RegexValidator(regex=r'^\d{2,3}/\d{2,3}$', message="BP must be in format Systolic/Diastolic (e.g., 120/80)")]
+    )
+    pulse_rate = serializers.IntegerField(required=False, allow_null=True)
+    respiratory_rate = serializers.IntegerField(required=False, allow_null=True)
+    weight_kg = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
+    height_cm = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
+    spo2 = serializers.IntegerField(required=False, allow_null=True)
+    notes = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+
 
 class FastTrackImmunizationSerializer(serializers.Serializer):
     session_type = serializers.ChoiceField(choices=ImmunizationRecord.SESSION_TYPES)
@@ -21,7 +38,7 @@ class FastTrackImmunizationSerializer(serializers.Serializer):
     state = serializers.CharField(max_length=100)
     lga = serializers.CharField(max_length=100)
     ward = serializers.CharField(max_length=100)
-    
+
     vaccines_given_ids = serializers.ListField(
         child=serializers.PrimaryKeyRelatedField(
             queryset=InventoryItem.objects.filter(drug_classification='IMMUNIZATION')
@@ -29,11 +46,12 @@ class FastTrackImmunizationSerializer(serializers.Serializer):
         min_length=1,
         help_text="Array of InventoryItem UUIDs"
     )
-    
+
     date_of_visit = serializers.DateField()
     notes = serializers.CharField(required=False, allow_blank=True)
     patient_id = serializers.CharField(required=False, allow_blank=True)
     new_patient_data = NewPatientFastTrackSerializer(required=False)
+    vitals = ImmunizationVitalsSerializer(required=False, help_text="Optional: record vitals at time of vaccination")
 
     def validate_vaccines_given_ids(self, value):
         if len(value) != len(set(value)):

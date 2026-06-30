@@ -4,6 +4,60 @@ from rest_framework import serializers
 from django.db import transaction
 from .models import Referral
 
+
+# ── Lightweight history serializers used by the patient-history endpoint ──
+
+class ReferralAppointmentSummarySerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    appointment_id = serializers.CharField()
+    appointment_date = serializers.DateField()
+    appointment_time = serializers.TimeField()
+    visit_type = serializers.CharField()
+    status = serializers.CharField()
+    priority = serializers.CharField()
+    reason_for_visit = serializers.CharField()
+
+
+class ReferralVitalsSummarySerializer(serializers.Serializer):
+    vital_id = serializers.CharField()
+    created_at = serializers.DateTimeField()
+    temperature = serializers.DecimalField(max_digits=4, decimal_places=1, allow_null=True)
+    blood_pressure = serializers.CharField(allow_null=True)
+    pulse_rate = serializers.IntegerField(allow_null=True)
+    respiratory_rate = serializers.IntegerField(allow_null=True)
+    weight_kg = serializers.DecimalField(max_digits=5, decimal_places=2, allow_null=True)
+    height_cm = serializers.DecimalField(max_digits=5, decimal_places=2, allow_null=True)
+    spo2 = serializers.IntegerField(allow_null=True)
+    bmi = serializers.FloatField(allow_null=True)
+
+
+class ReferralConsultationSummarySerializer(serializers.Serializer):
+    consultation_id = serializers.CharField()
+    created_at = serializers.DateTimeField()
+    chief_complaint = serializers.CharField()
+    primary_diagnosis = serializers.CharField()
+    secondary_diagnosis = serializers.CharField(allow_null=True)
+    treatment_plan = serializers.CharField()
+    additional_notes = serializers.CharField(allow_null=True)
+
+
+class ReferralPatientProfileSummarySerializer(serializers.Serializer):
+    patient_id = serializers.CharField()
+    sex = serializers.CharField()
+    date_of_birth = serializers.DateField()
+    age = serializers.IntegerField(allow_null=True)
+    age_group = serializers.CharField()
+    blood_group = serializers.CharField()
+    genotype = serializers.CharField()
+    lga = serializers.CharField(allow_null=True)
+    ward = serializers.CharField(allow_null=True)
+    allergies = serializers.CharField(allow_null=True)
+    chronic_conditions = serializers.CharField(allow_null=True)
+    insurance_status = serializers.CharField()
+    next_of_kin_name = serializers.CharField(allow_null=True)
+    next_of_kin_phone = serializers.CharField(allow_null=True)
+    next_of_kin_relationship = serializers.CharField(allow_null=True)
+
 class ReferralReadSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source='patient.get_full_name', read_only=True)
     patient_display_id = serializers.CharField(source='patient.patient_profile.patient_id', read_only=True)

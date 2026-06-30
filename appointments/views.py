@@ -174,7 +174,11 @@ class VitalsViewSet(viewsets.ModelViewSet):
             OpenApiParameter(name='search', description='Search by Patient Name, PT-ID, or Vital ID', required=False, type=str),
             OpenApiParameter(name='visit_type', description='Filter by Appointment Visit Type (e.g., GENERAL, ANTENATAL)', required=False, type=str),
             OpenApiParameter(name='priority', description='Filter by Appointment Priority (NORMAL, URGENT, CRITICAL)', required=False, type=str),
-            OpenApiParameter(name='status', description='Filter by Appointment Status (e.g., VITALS_DONE, COMPLETED)', required=False, type=str),
+            OpenApiParameter(name='status', description=(
+                'Filter by Appointment Status (e.g., VITALS_DONE, COMPLETED). '
+                'Defaults to SCHEDULED and ARRIVED (pending vitals). '
+                'Pass ALL to return every record regardless of status.'
+            ), required=False, type=str),
         ]
     )
     def list(self, request, *args, **kwargs):
@@ -200,8 +204,13 @@ class VitalsViewSet(viewsets.ModelViewSet):
             qs = qs.filter(appointment__visit_type=visit_type.upper())
         if priority:
             qs = qs.filter(appointment__priority=priority.upper())
+
         if apt_status:
-            qs = qs.filter(appointment__status=apt_status.upper())
+            if apt_status.upper() != 'ALL':
+                qs = qs.filter(appointment__status=apt_status.upper())
+        else:
+            # Default: show only appointments where vitals haven't been done yet
+            qs = qs.filter(appointment__status__in=['SCHEDULED', 'ARRIVED'])
 
         if search:
             qs = qs.filter(

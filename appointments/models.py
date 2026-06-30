@@ -104,6 +104,17 @@ class Vitals(BaseModel):
 
         return 'NORMAL'
 
+    def _has_measurements(self):
+        return any([
+            self.temperature is not None,
+            bool(self.blood_pressure),
+            self.pulse_rate is not None,
+            self.respiratory_rate is not None,
+            self.weight_kg is not None,
+            self.height_cm is not None,
+            self.spo2 is not None,
+        ])
+
     def save(self, *args, **kwargs):
         if not self.vital_id:
             with transaction.atomic():
@@ -111,19 +122,19 @@ class Vitals(BaseModel):
                 self.sequence_number = (last_vital.sequence_number + 1) if last_vital else 1
                 state_code = connection.schema_name.upper()[:3] if connection.schema_name else 'UNK'
                 self.vital_id = f"VIT-{state_code}-{self.sequence_number:06d}"
-                
+
         if self.appointment and not getattr(self, 'patient', None):
             self.patient = self.appointment.patient
-            
+
         super().save(*args, **kwargs)
 
-        if self.appointment:
+        if self.appointment and self._has_measurements():
             calculated_priority = self.get_triage_priority()
             self.appointment.priority = calculated_priority
-            
+
             if self.appointment.status in ['SCHEDULED', 'ARRIVED']:
                 self.appointment.status = 'VITALS_DONE'
-                
+
             self.appointment.save(update_fields=['priority', 'status', 'updated_at'])
 
     @property
