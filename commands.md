@@ -38,6 +38,19 @@ If the CLI shows the tenant schema is healthy but HTTP requests still fail with
 missing tenant tables, redeploy the app so `TenantHostFallbackMiddleware` can
 correct the tenant from Vercel/proxy host headers before authentication runs.
 
+For single-tenant production on Vercel, set this environment variable:
+
+## DEFAULT_TENANT_SCHEMA=plateau
+
+To inspect the live HTTP tenant context without triggering JWT auth, set a secret
+token in Vercel:
+
+## TENANT_DEBUG_TOKEN=<long-random-secret>
+
+Then visit:
+
+## https://primary-health-care-api.vercel.app/__tenant-debug__/?token=<long-random-secret>
+
 Manual repair steps:
 
 1. Apply tenant migrations to the schema that should serve the API hostname
