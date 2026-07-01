@@ -7,17 +7,23 @@ from core.models import User
 from inventory.models import InventoryItem
 
 class LabTestItemSerializer(serializers.ModelSerializer):
-    linked_item_name = serializers.CharField(source='linked_item.name', read_only=True)
+    linked_item = serializers.PrimaryKeyRelatedField(
+        queryset=InventoryItem.objects.filter(inventory_category__in=['LAB_EQUIPMENT', 'CONSUMABLE']),
+        required=False,
+        allow_null=True,
+        help_text="Optional. The specific test kit or consumable linked to this test.",
+    )
+    linked_item_name = serializers.CharField(source='linked_item.name', read_only=True, default=None)
 
     class Meta:
         model = LabTest
         fields = [
-            'id', 'test_name', 'linked_item', 'linked_item_name', 'sample_type', 
-            'test_status', 'result_value', 'result_unit', 'test_method', 
+            'id', 'test_name', 'linked_item', 'linked_item_name', 'sample_type',
+            'test_status', 'result_value', 'result_unit', 'test_method',
             'result_interpretation', 'result_notes', 'result_date'
         ]
         read_only_fields = [
-            'id', 'test_status', 'result_value', 'result_unit', 
+            'id', 'test_status', 'result_value', 'result_unit',
             'test_method', 'result_interpretation', 'result_notes', 'result_date'
         ]
 
