@@ -175,9 +175,8 @@ class VitalsViewSet(viewsets.ModelViewSet):
             OpenApiParameter(name='visit_type', description='Filter by Appointment Visit Type (e.g., GENERAL, ANTENATAL)', required=False, type=str),
             OpenApiParameter(name='priority', description='Filter by Appointment Priority (NORMAL, URGENT, CRITICAL)', required=False, type=str),
             OpenApiParameter(name='status', description=(
-                'Filter by Appointment Status (e.g., VITALS_DONE, COMPLETED). '
-                'Defaults to SCHEDULED and ARRIVED (pending vitals). '
-                'Pass ALL to return every record regardless of status.'
+                'Filter by Appointment Status (e.g., SCHEDULED, ARRIVED, VITALS_DONE, COMPLETED). '
+                'If omitted, returns vitals for all statuses.'
             ), required=False, type=str),
         ]
     )
@@ -205,16 +204,8 @@ class VitalsViewSet(viewsets.ModelViewSet):
         if priority:
             qs = qs.filter(appointment__priority=priority.upper())
 
-        if apt_status:
-            if apt_status.upper() != 'ALL':
-                qs = qs.filter(appointment__status=apt_status.upper())
-        elif not apt_id and not pat_id:
-            # Default (only for the unfiltered work queue): show only
-            # appointments where vitals haven't been done yet. Looking up a
-            # specific appointment/patient's vitals should never be hidden
-            # by this, since those records may belong to already-completed
-            # visits (e.g. ANC/PNC visits, which are created as COMPLETED).
-            qs = qs.filter(appointment__status__in=['SCHEDULED', 'ARRIVED'])
+        if apt_status and apt_status.upper() != 'ALL':
+            qs = qs.filter(appointment__status=apt_status.upper())
 
         if search:
             qs = qs.filter(
