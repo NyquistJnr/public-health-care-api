@@ -1,14 +1,22 @@
 # maternal_care/serializers.py
+import uuid
+from django.contrib.auth.models import Group
+from django.core.validators import RegexValidator
 from rest_framework import serializers
 from django.db import transaction
 from django.utils import timezone
 from .models import (
-    MaternalCareEpisode, ANCVisit, PNCVisit, 
+    MaternalCareEpisode, ANCVisit, PNCVisit,
     PNCNewbornAssessment, MaternalScheduleRule
 )
 from core.models import User, PatientProfile
 from .services import MaternalScheduleEngine
-from appointments.models import Appointment
+from appointments.models import Appointment, Vitals
+
+_bp_validator = RegexValidator(
+    regex=r'^\d{2,3}/\d{2,3}$',
+    message="BP must be in format Systolic/Diastolic (e.g., 120/80)"
+)
 
 class MaternalScheduleRuleSerializer(serializers.ModelSerializer):
     """Serializer for configuring Global State-Level ANC/PNC Scheduling Rules."""
@@ -114,13 +122,33 @@ class EpisodeBabySerializer(serializers.Serializer):
     date_of_birth = serializers.DateField(source='patient_profile.date_of_birth', read_only=True)
 
 class AppointmentForANCSerializer(serializers.Serializer):
-    # --- 1. Appointment / Core Info ---
-    patient_id = serializers.UUIDField(help_text="UUID of the Patient")
+    # --- 1. Patient Identity (UUID or inline registration) ---
+    patient_id = serializers.UUIDField(
+        required=False, allow_null=True,
+        help_text="UUID of an existing Patient. Omit to register a new patient inline."
+    )
+
+    # --- 2. Inline Patient Registration (required when no patient_id) ---
+    first_name = serializers.CharField(required=False)
+    last_name = serializers.CharField(required=False)
+    middle_name = serializers.CharField(required=False, allow_blank=True)
+    sex = serializers.ChoiceField(choices=PatientProfile.SEX_CHOICES, required=False)
+    date_of_birth = serializers.DateField(required=False)
+    phone_number = serializers.CharField(required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    lga = serializers.CharField(required=False, allow_blank=True)
+    ward = serializers.CharField(required=False, allow_blank=True)
+    blood_group = serializers.ChoiceField(choices=PatientProfile.BLOOD_GROUP_CHOICES, required=False)
+    genotype = serializers.ChoiceField(choices=PatientProfile.GENOTYPE_CHOICES, required=False)
+    next_of_kin_name = serializers.CharField(required=False, allow_blank=True)
+    next_of_kin_phone = serializers.CharField(required=False, allow_blank=True)
+
+    # --- 3. Appointment / Core Info ---
     assigned_to_id = serializers.UUIDField(required=False, allow_null=True, help_text="Optional UUID of the Doctor/Nurse")
     appointment_date = serializers.DateField(default=timezone.now)
     appointment_time = serializers.TimeField(default=timezone.now)
-    
-    # --- 2. Episode Info (Required ONLY if NEW Pregnancy) ---
+
+    # --- 4. Episode Info (Required ONLY if NEW Pregnancy) ---
     last_menstrual_period = serializers.DateField(required=False, allow_null=True)
     gravida = serializers.IntegerField(required=False, allow_null=True)
     parity = serializers.IntegerField(required=False, allow_null=True)
@@ -128,17 +156,27 @@ class AppointmentForANCSerializer(serializers.Serializer):
     partner_name = serializers.CharField(max_length=255, required=False, allow_blank=True)
     partner_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
 
-    # --- 3. ANC Clinical Data ---
+    # --- 5. Vitals (all optional) ---
+    temperature = serializers.DecimalField(max_digits=4, decimal_places=1, required=False, allow_null=True)
+    blood_pressure = serializers.CharField(
+        max_length=7, required=False, allow_null=True, allow_blank=True, validators=[_bp_validator]
+    )
+    pulse_rate = serializers.IntegerField(required=False, allow_null=True)
+    respiratory_rate = serializers.IntegerField(required=False, allow_null=True)
+    weight_kg = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
+    height_cm = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
+    spo2 = serializers.IntegerField(required=False, allow_null=True)
+    vitals_notes = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+
+    # --- 6. ANC Clinical Data ---
     hiv_status = serializers.CharField(max_length=50, required=False, allow_blank=True)
     vdrl_syphilis = serializers.CharField(max_length=50, required=False, allow_blank=True)
     hepatitis_b = serializers.CharField(max_length=50, required=False, allow_blank=True)
     hemoglobin = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
     urinalysis = serializers.CharField(required=False, allow_blank=True)
-    
     tt_dose_given = serializers.CharField(max_length=20, required=False, allow_blank=True)
     iptp_dose_given = serializers.CharField(max_length=20, required=False, allow_blank=True)
     iron_folate_given = serializers.BooleanField(default=False)
-    
     risk_factors = serializers.CharField(required=False, allow_blank=True)
     clinical_notes = serializers.CharField(required=False, allow_blank=True)
 
@@ -146,22 +184,36 @@ class AppointmentForANCSerializer(serializers.Serializer):
         patient_id = attrs.get('patient_id')
         facility = self.context['request'].user.facility
 
-        try:
-            patient = User.objects.get(id=patient_id, role='PATIENT', facility=facility)
-            attrs['patient_instance'] = patient
-        except User.DoesNotExist:
-            raise serializers.ValidationError({"patient_id": "Valid patient not found in this facility."})
+        if patient_id:
+            try:
+                patient = User.objects.get(id=patient_id, role='PATIENT', facility=facility)
+                attrs['patient_instance'] = patient
+            except User.DoesNotExist:
+                raise serializers.ValidationError({"patient_id": "Valid patient not found in this facility."})
 
-        active_episode = MaternalCareEpisode.objects.filter(patient=patient, status='ACTIVE').first()
-        
-        if active_episode:
-            attrs['episode_instance'] = active_episode
-            attrs['attendance_type'] = 'RETURN'
+            active_episode = MaternalCareEpisode.objects.filter(patient=patient, status='ACTIVE').first()
+            if active_episode:
+                attrs['episode_instance'] = active_episode
+                attrs['attendance_type'] = 'RETURN'
+            else:
+                if attrs.get('last_menstrual_period') is None or attrs.get('gravida') is None or attrs.get('parity') is None:
+                    raise serializers.ValidationError(
+                        "This patient has no active pregnancy. You must provide 'last_menstrual_period', 'gravida', and 'parity' to initiate a new episode."
+                    )
+                attrs['attendance_type'] = 'NEW'
         else:
+            if not (attrs.get('first_name') and attrs.get('last_name') and attrs.get('sex') and attrs.get('date_of_birth')):
+                raise serializers.ValidationError({
+                    "patient_id": (
+                        "Provide an existing patient UUID, or supply first_name, last_name, sex, "
+                        "and date_of_birth to register a new patient inline."
+                    )
+                })
             if attrs.get('last_menstrual_period') is None or attrs.get('gravida') is None or attrs.get('parity') is None:
                 raise serializers.ValidationError(
-                    "This patient has no active pregnancy. You must provide 'last_menstrual_period', 'gravida', and 'parity' to initiate a new episode."
+                    "For a new patient, you must also provide 'last_menstrual_period', 'gravida', and 'parity' to initiate a pregnancy episode."
                 )
+            attrs['patient_instance'] = None
             attrs['attendance_type'] = 'NEW'
 
         return attrs
@@ -169,9 +221,59 @@ class AppointmentForANCSerializer(serializers.Serializer):
     @transaction.atomic
     def create(self, validated_data):
         user = self.context['request'].user
+        facility = user.facility
+
         patient = validated_data.pop('patient_instance')
         attendance_type = validated_data.pop('attendance_type')
-        episode = validated_data.get('episode_instance')
+        episode = validated_data.pop('episode_instance', None)
+        validated_data.pop('patient_id', None)
+
+        _patient_user_fields = ['first_name', 'last_name', 'middle_name', 'phone_number', 'email']
+        _patient_profile_fields = ['sex', 'date_of_birth', 'lga', 'ward', 'blood_group', 'genotype',
+                                   'next_of_kin_name', 'next_of_kin_phone']
+        patient_data = {f: validated_data.pop(f) for f in _patient_user_fields + _patient_profile_fields
+                        if f in validated_data}
+
+        _vitals_fields = ['temperature', 'blood_pressure', 'pulse_rate', 'respiratory_rate',
+                          'weight_kg', 'height_cm', 'spo2', 'vitals_notes']
+        vitals_data = {}
+        for field in _vitals_fields:
+            if field in validated_data:
+                value = validated_data.pop(field)
+                if value is not None and value != '':
+                    vitals_data['notes' if field == 'vitals_notes' else field] = value
+
+        if patient is None:
+            email = patient_data.get('email', '')
+            patient = User(
+                first_name=patient_data.get('first_name', ''),
+                last_name=patient_data.get('last_name', ''),
+                middle_name=patient_data.get('middle_name'),
+                phone_number=patient_data.get('phone_number'),
+                email=email,
+                username=email if email else f"patient_{uuid.uuid4().hex[:10]}",
+                role='PATIENT',
+                facility=facility,
+                created_by=user,
+            )
+            patient.set_unusable_password()
+            patient.save()
+            try:
+                patient.groups.add(Group.objects.get(name='PATIENT'))
+            except Group.DoesNotExist:
+                pass
+            PatientProfile.objects.create(
+                user=patient,
+                sex=patient_data.get('sex', ''),
+                date_of_birth=patient_data.get('date_of_birth'),
+                lga=patient_data.get('lga', ''),
+                ward=patient_data.get('ward', ''),
+                blood_group=patient_data.get('blood_group', ''),
+                genotype=patient_data.get('genotype', ''),
+                next_of_kin_name=patient_data.get('next_of_kin_name', ''),
+                next_of_kin_phone=patient_data.get('next_of_kin_phone', ''),
+                created_by=user,
+            )
 
         if attendance_type == 'NEW':
             episode = MaternalCareEpisode.objects.create(
@@ -189,7 +291,7 @@ class AppointmentForANCSerializer(serializers.Serializer):
         assigned_to = User.objects.filter(id=assigned_to_id).first() if assigned_to_id else user
 
         appointment = Appointment.objects.create(
-            facility=user.facility,
+            facility=facility,
             patient=patient,
             assigned_to=assigned_to,
             appointment_date=validated_data.get('appointment_date'),
@@ -200,6 +302,14 @@ class AppointmentForANCSerializer(serializers.Serializer):
             notes=validated_data.get('clinical_notes', ''),
             created_by=user
         )
+
+        if vitals_data:
+            Vitals.objects.create(
+                appointment=appointment,
+                patient=patient,
+                created_by=user,
+                **vitals_data,
+            )
 
         anc_visit = ANCVisit.objects.create(
             episode=episode,
@@ -220,14 +330,14 @@ class AppointmentForANCSerializer(serializers.Serializer):
 
         previous_visits_count = ANCVisit.objects.filter(episode=episode).count()
         anc_visit.visit_sequence_number = previous_visits_count
-        
+
         next_date, recommended_tasks = MaternalScheduleEngine.calculate_next_visit(
             episode=episode,
             care_type='ANC',
             current_visit_sequence=anc_visit.visit_sequence_number,
             last_visit_date=appointment.appointment_date
         )
-        
+
         anc_visit.next_visit_date = next_date
         anc_visit.recommended_tasks = recommended_tasks
         anc_visit.save(update_fields=['visit_sequence_number', 'next_visit_date', 'recommended_tasks'])
@@ -254,19 +364,51 @@ class PNCBabyAssessmentInputSerializer(serializers.Serializer):
     outcome = serializers.ChoiceField(choices=PNCNewbornAssessment.OUTCOME_CHOICES, default='HEALTHY')
 
 class AppointmentForPNCSerializer(serializers.Serializer):
-    # --- 1. Core Info ---
-    patient_id = serializers.UUIDField(help_text="UUID of the Mother")
+    # --- 1. Patient Identity (UUID or inline registration) ---
+    patient_id = serializers.UUIDField(
+        required=False, allow_null=True,
+        help_text="UUID of an existing Patient. Omit to register a new patient inline."
+    )
+
+    # --- 2. Inline Patient Registration (required when no patient_id) ---
+    first_name = serializers.CharField(required=False)
+    last_name = serializers.CharField(required=False)
+    middle_name = serializers.CharField(required=False, allow_blank=True)
+    sex = serializers.ChoiceField(choices=PatientProfile.SEX_CHOICES, required=False)
+    date_of_birth = serializers.DateField(required=False)
+    phone_number = serializers.CharField(required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    lga = serializers.CharField(required=False, allow_blank=True)
+    ward = serializers.CharField(required=False, allow_blank=True)
+    blood_group = serializers.ChoiceField(choices=PatientProfile.BLOOD_GROUP_CHOICES, required=False)
+    genotype = serializers.ChoiceField(choices=PatientProfile.GENOTYPE_CHOICES, required=False)
+    next_of_kin_name = serializers.CharField(required=False, allow_blank=True)
+    next_of_kin_phone = serializers.CharField(required=False, allow_blank=True)
+
+    # --- 3. Core Info ---
     assigned_to_id = serializers.UUIDField(required=False, allow_null=True)
     appointment_date = serializers.DateField(default=timezone.now)
     appointment_time = serializers.TimeField(default=timezone.now)
-    
-    # --- 2. Walk-In Edge Case (Optional) ---
+
+    # --- 4. Walk-In Edge Case (Optional) ---
     walk_in_delivery_data = WalkInDeliverySerializer(
-        required=False, 
+        required=False,
         help_text="Provide this ONLY if the mother delivered elsewhere and has no Episode in this system."
     )
 
-    # --- 3. Maternal PNC Data ---
+    # --- 5. Vitals (all optional) ---
+    temperature = serializers.DecimalField(max_digits=4, decimal_places=1, required=False, allow_null=True)
+    blood_pressure = serializers.CharField(
+        max_length=7, required=False, allow_null=True, allow_blank=True, validators=[_bp_validator]
+    )
+    pulse_rate = serializers.IntegerField(required=False, allow_null=True)
+    respiratory_rate = serializers.IntegerField(required=False, allow_null=True)
+    weight_kg = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
+    height_cm = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
+    spo2 = serializers.IntegerField(required=False, allow_null=True)
+    vitals_notes = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+
+    # --- 6. Maternal PNC Data ---
     timing_of_visit = serializers.CharField(max_length=50, help_text="e.g., 3 Days, 6 Weeks")
     vaginal_examination_conducted = serializers.BooleanField(default=False)
     hemoglobin_pcv = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
@@ -276,9 +418,9 @@ class AppointmentForPNCSerializer(serializers.Serializer):
     referral_reason = serializers.CharField(required=False, allow_blank=True)
     clinical_notes = serializers.CharField(required=False, allow_blank=True)
 
-    # --- 4. Newborn Assessments ---
+    # --- 7. Newborn Assessments ---
     baby_assessments = PNCBabyAssessmentInputSerializer(
-        many=True, required=False, 
+        many=True, required=False,
         help_text="Assessments for the babies. If walk-in, pass empty array and we will register them first."
     )
 
@@ -286,46 +428,107 @@ class AppointmentForPNCSerializer(serializers.Serializer):
         patient_id = attrs.get('patient_id')
         facility = self.context['request'].user.facility
 
-        try:
-            patient = User.objects.get(id=patient_id, role='PATIENT', facility=facility)
-            attrs['patient_instance'] = patient
-        except User.DoesNotExist:
-            raise serializers.ValidationError({"patient_id": "Valid patient not found in this facility."})
+        if patient_id:
+            try:
+                patient = User.objects.get(id=patient_id, role='PATIENT', facility=facility)
+                attrs['patient_instance'] = patient
+            except User.DoesNotExist:
+                raise serializers.ValidationError({"patient_id": "Valid patient not found in this facility."})
 
-        episode = MaternalCareEpisode.objects.filter(
-            patient=patient, 
-            status__in=['ACTIVE', 'DELIVERED']
-        ).order_by('-created_at').first()
-        
-        walk_in_data = attrs.get('walk_in_delivery_data')
+            episode = MaternalCareEpisode.objects.filter(
+                patient=patient,
+                status__in=['ACTIVE', 'DELIVERED']
+            ).order_by('-created_at').first()
 
-        if episode:
-            if episode.status == 'ACTIVE':
-                episode.status = 'DELIVERED'
-                episode.save(update_fields=['status', 'updated_at'])
-            
-            attrs['episode_instance'] = episode
-            attrs['attendance_type'] = 'RETURN' if PNCVisit.objects.filter(episode=episode).exists() else 'NEW'
+            walk_in_data = attrs.get('walk_in_delivery_data')
+
+            if episode:
+                if episode.status == 'ACTIVE':
+                    episode.status = 'DELIVERED'
+                    episode.save(update_fields=['status', 'updated_at'])
+                attrs['episode_instance'] = episode
+                attrs['attendance_type'] = 'RETURN' if PNCVisit.objects.filter(episode=episode).exists() else 'NEW'
+            else:
+                if not walk_in_data:
+                    raise serializers.ValidationError(
+                        "This patient has no pregnancy record on file. You must provide 'walk_in_delivery_data' to register her past delivery before conducting a PNC visit."
+                    )
+                attrs['attendance_type'] = 'NEW'
         else:
-            if not walk_in_data:
+            if not (attrs.get('first_name') and attrs.get('last_name') and attrs.get('sex') and attrs.get('date_of_birth')):
+                raise serializers.ValidationError({
+                    "patient_id": (
+                        "Provide an existing patient UUID, or supply first_name, last_name, sex, "
+                        "and date_of_birth to register a new patient inline."
+                    )
+                })
+            if not attrs.get('walk_in_delivery_data'):
                 raise serializers.ValidationError(
-                    "This patient has no pregnancy record on file. You must provide 'walk_in_delivery_data' to register her past delivery before conducting a PNC visit."
+                    "For a new patient, you must provide 'walk_in_delivery_data' to register her delivery and babies."
                 )
+            attrs['patient_instance'] = None
             attrs['attendance_type'] = 'NEW'
 
         return attrs
 
     @transaction.atomic
     def create(self, validated_data):
-        import uuid
-        from django.contrib.auth.models import Group
-        
         user = self.context['request'].user
         facility = user.facility
+
         patient = validated_data.pop('patient_instance')
         attendance_type = validated_data.pop('attendance_type')
-        episode = validated_data.get('episode_instance')
+        episode = validated_data.pop('episode_instance', None)
+        validated_data.pop('patient_id', None)
+
+        _patient_user_fields = ['first_name', 'last_name', 'middle_name', 'phone_number', 'email']
+        _patient_profile_fields = ['sex', 'date_of_birth', 'lga', 'ward', 'blood_group', 'genotype',
+                                   'next_of_kin_name', 'next_of_kin_phone']
+        patient_data = {f: validated_data.pop(f) for f in _patient_user_fields + _patient_profile_fields
+                        if f in validated_data}
+
+        _vitals_fields = ['temperature', 'blood_pressure', 'pulse_rate', 'respiratory_rate',
+                          'weight_kg', 'height_cm', 'spo2', 'vitals_notes']
+        vitals_data = {}
+        for field in _vitals_fields:
+            if field in validated_data:
+                value = validated_data.pop(field)
+                if value is not None and value != '':
+                    vitals_data['notes' if field == 'vitals_notes' else field] = value
+
         walk_in_data = validated_data.get('walk_in_delivery_data')
+
+        if patient is None:
+            email = patient_data.get('email', '')
+            patient = User(
+                first_name=patient_data.get('first_name', ''),
+                last_name=patient_data.get('last_name', ''),
+                middle_name=patient_data.get('middle_name'),
+                phone_number=patient_data.get('phone_number'),
+                email=email,
+                username=email if email else f"patient_{uuid.uuid4().hex[:10]}",
+                role='PATIENT',
+                facility=facility,
+                created_by=user,
+            )
+            patient.set_unusable_password()
+            patient.save()
+            try:
+                patient.groups.add(Group.objects.get(name='PATIENT'))
+            except Group.DoesNotExist:
+                pass
+            PatientProfile.objects.create(
+                user=patient,
+                sex=patient_data.get('sex', ''),
+                date_of_birth=patient_data.get('date_of_birth'),
+                lga=patient_data.get('lga', ''),
+                ward=patient_data.get('ward', ''),
+                blood_group=patient_data.get('blood_group', ''),
+                genotype=patient_data.get('genotype', ''),
+                next_of_kin_name=patient_data.get('next_of_kin_name', ''),
+                next_of_kin_phone=patient_data.get('next_of_kin_phone', ''),
+                created_by=user,
+            )
 
         if not episode and walk_in_data:
             episode = MaternalCareEpisode.objects.create(
@@ -335,7 +538,6 @@ class AppointmentForPNCSerializer(serializers.Serializer):
                 parity=walk_in_data['parity'],
                 created_by=user
             )
-            
             patient_group = Group.objects.filter(name='PATIENT').first()
             for baby_data in walk_in_data['babies_to_register']:
                 dummy_email = f"baby_{uuid.uuid4().hex[:10]}@placeholder.com"
@@ -347,7 +549,6 @@ class AppointmentForPNCSerializer(serializers.Serializer):
                 baby_user.save()
                 if patient_group:
                     baby_user.groups.add(patient_group)
-                    
                 PatientProfile.objects.create(
                     user=baby_user, sex=baby_data['sex'], date_of_birth=walk_in_data['delivery_date'],
                     mother=patient, birth_episode=episode, created_by=user
@@ -363,11 +564,19 @@ class AppointmentForPNCSerializer(serializers.Serializer):
             appointment_date=validated_data.get('appointment_date'),
             appointment_time=validated_data.get('appointment_time'),
             visit_type='POSTNATAL',
-            status='COMPLETED', 
+            status='COMPLETED',
             reason_for_visit="Routine PNC Visit",
             notes=validated_data.get('clinical_notes', ''),
             created_by=user
         )
+
+        if vitals_data:
+            Vitals.objects.create(
+                appointment=appointment,
+                patient=patient,
+                created_by=user,
+                **vitals_data,
+            )
 
         pnc_visit = PNCVisit.objects.create(
             episode=episode,
@@ -405,14 +614,14 @@ class AppointmentForPNCSerializer(serializers.Serializer):
 
         previous_visits_count = PNCVisit.objects.filter(episode=episode).count()
         pnc_visit.visit_sequence_number = previous_visits_count
-        
+
         next_date, recommended_tasks = MaternalScheduleEngine.calculate_next_visit(
             episode=episode,
             care_type='PNC',
             current_visit_sequence=pnc_visit.visit_sequence_number,
             last_visit_date=appointment.appointment_date
         )
-        
+
         pnc_visit.next_visit_date = next_date
         pnc_visit.recommended_tasks = recommended_tasks
         pnc_visit.save(update_fields=['visit_sequence_number', 'next_visit_date', 'recommended_tasks'])
