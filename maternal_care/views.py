@@ -183,7 +183,9 @@ class ANCVisitViewSet(viewsets.ModelViewSet):
         return super().list(request, *args, **kwargs)
 
     def get_queryset(self):
-        qs = ANCVisit.objects.filter(appointment__facility=self.request.user.facility)
+        qs = ANCVisit.objects.filter(appointment__facility=self.request.user.facility).select_related(
+            'appointment', 'appointment__patient', 'appointment__patient__patient_profile'
+        )
 
         episode_id = self.request.query_params.get('episode_id')
         attendance_type = self.request.query_params.get('attendance_type')
@@ -236,7 +238,9 @@ class PNCVisitViewSet(viewsets.ModelViewSet):
         return super().list(request, *args, **kwargs)
 
     def get_queryset(self):
-        qs = PNCVisit.objects.filter(appointment__facility=self.request.user.facility)
+        qs = PNCVisit.objects.filter(appointment__facility=self.request.user.facility).select_related(
+            'appointment', 'appointment__patient', 'appointment__patient__patient_profile'
+        )
 
         episode_id = self.request.query_params.get('episode_id')
         outcome = self.request.query_params.get('outcome')

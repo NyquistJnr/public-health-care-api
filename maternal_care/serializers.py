@@ -27,6 +27,10 @@ class BlankableIntegerField(serializers.IntegerField):
         return super().validate_empty_values(data)
 
 
+def _patient_full_name(patient):
+    return f"{patient.first_name} {patient.last_name}"
+
+
 class MaternalScheduleRuleSerializer(serializers.ModelSerializer):
     """Serializer for configuring Global State-Level ANC/PNC Scheduling Rules."""
     class Meta:
@@ -65,14 +69,21 @@ class MaternalCareEpisodeSerializer(serializers.ModelSerializer):
 class ANCVisitSerializer(serializers.ModelSerializer):
     """Serializer for individual Antenatal Care visits."""
     appointment_date = serializers.DateField(source='appointment.appointment_date', read_only=True)
-    
+    appointment_custom_id = serializers.CharField(source='appointment.appointment_id', read_only=True)
+    patient_id = serializers.UUIDField(source='appointment.patient.id', read_only=True)
+    patient_name = serializers.SerializerMethodField()
+    patient_display_id = serializers.CharField(source='appointment.patient.patient_profile.patient_id', read_only=True)
+
     class Meta:
         model = ANCVisit
         fields = '__all__'
         read_only_fields = [
-            'id', 'visit_sequence_number', 'next_visit_date', 
+            'id', 'visit_sequence_number', 'next_visit_date',
             'recommended_tasks', 'created_at', 'updated_at', 'created_by'
         ]
+
+    def get_patient_name(self, obj):
+        return _patient_full_name(obj.appointment.patient)
 
 
 class PNCNewbornAssessmentSerializer(serializers.ModelSerializer):
@@ -92,21 +103,29 @@ class PNCNewbornAssessmentSerializer(serializers.ModelSerializer):
 class PNCVisitSerializer(serializers.ModelSerializer):
     """Serializer for Postnatal Care visits, including nested newborn assessments."""
     appointment_date = serializers.DateField(source='appointment.appointment_date', read_only=True)
+    appointment_custom_id = serializers.CharField(source='appointment.appointment_id', read_only=True)
+    patient_id = serializers.UUIDField(source='appointment.patient.id', read_only=True)
+    patient_name = serializers.SerializerMethodField()
+    patient_display_id = serializers.CharField(source='appointment.patient.patient_profile.patient_id', read_only=True)
     newborn_assessments = PNCNewbornAssessmentSerializer(many=True, read_only=True)
-    
+
     class Meta:
         model = PNCVisit
         fields = [
-            'id', 'episode', 'appointment', 'appointment_date', 'attendance_type',
+            'id', 'episode', 'appointment', 'appointment_date', 'appointment_custom_id',
+            'patient_id', 'patient_name', 'patient_display_id', 'attendance_type',
             'visit_sequence_number', 'next_visit_date', 'recommended_tasks',
             'timing_of_visit', 'vaginal_examination_conducted', 'hemoglobin_pcv',
             'urinalysis', 'counselling_topics', 'outcome', 'referral_reason',
             'newborn_assessments', 'created_at'
         ]
         read_only_fields = [
-            'id', 'visit_sequence_number', 'next_visit_date', 
+            'id', 'visit_sequence_number', 'next_visit_date',
             'recommended_tasks', 'created_at', 'updated_at', 'created_by'
         ]
+
+    def get_patient_name(self, obj):
+        return _patient_full_name(obj.appointment.patient)
 
 class NewbornRegistrationSerializer(serializers.Serializer):
     """Details for a single newborn (used during delivery recording)."""
