@@ -306,7 +306,7 @@ class AppointmentForANCSerializer(serializers.Serializer):
             appointment_date=validated_data.get('appointment_date'),
             appointment_time=validated_data.get('appointment_time'),
             visit_type='ANTENATAL',
-            status='COMPLETED',
+            status='VITALS_DONE' if vitals_data else 'ARRIVED',
             reason_for_visit="Routine ANC Visit",
             notes=validated_data.get('clinical_notes', ''),
             created_by=user
@@ -573,7 +573,7 @@ class AppointmentForPNCSerializer(serializers.Serializer):
             appointment_date=validated_data.get('appointment_date'),
             appointment_time=validated_data.get('appointment_time'),
             visit_type='POSTNATAL',
-            status='COMPLETED',
+            status='VITALS_DONE' if vitals_data else 'ARRIVED',
             reason_for_visit="Routine PNC Visit",
             notes=validated_data.get('clinical_notes', ''),
             created_by=user
