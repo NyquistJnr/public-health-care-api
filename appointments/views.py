@@ -208,8 +208,12 @@ class VitalsViewSet(viewsets.ModelViewSet):
         if apt_status:
             if apt_status.upper() != 'ALL':
                 qs = qs.filter(appointment__status=apt_status.upper())
-        else:
-            # Default: show only appointments where vitals haven't been done yet
+        elif not apt_id and not pat_id:
+            # Default (only for the unfiltered work queue): show only
+            # appointments where vitals haven't been done yet. Looking up a
+            # specific appointment/patient's vitals should never be hidden
+            # by this, since those records may belong to already-completed
+            # visits (e.g. ANC/PNC visits, which are created as COMPLETED).
             qs = qs.filter(appointment__status__in=['SCHEDULED', 'ARRIVED'])
 
         if search:
