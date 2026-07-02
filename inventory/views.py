@@ -77,7 +77,15 @@ def calculate_facility_inventory_stats(facility):
         description="Retrieve a paginated list of all inventory items (Drugs, Lab Equipment, Consumables) in the current facility.",
         parameters=[
             OpenApiParameter(name='search', description='Search by item name or type', required=False, type=str),
-            OpenApiParameter(name='inventory_category', description='Filter by Category: DRUG, LAB_EQUIPMENT, CONSUMABLE', required=False, type=str),
+            OpenApiParameter(
+                name='inventory_category',
+                description=(
+                    'Filter by Category: DRUG, LAB_EQUIPMENT, CONSUMABLE. '
+                    'Accepts multiple values via repeated params (?inventory_category=DRUG&inventory_category=CONSUMABLE) '
+                    'or a comma-separated list (?inventory_category=DRUG,CONSUMABLE).'
+                ),
+                required=False, type=str
+            ),
             OpenApiParameter(name='drug_classification', description='Filter by Class: NORMAL, IMMUNIZATION', required=False, type=str),
             OpenApiParameter(name='status', description='Filter by Status: IN_STOCK, LOW_STOCK, OUT_OF_STOCK', required=False, type=str),
             OpenApiParameter(name='start_date', description='Filter by creation start date (YYYY-MM-DD)', required=False, type=str),
@@ -102,7 +110,9 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
         queryset = InventoryItem.objects.filter(facility=self.request.user.facility)
         
         search = self.request.query_params.get('search')
-        category = self.request.query_params.get('inventory_category')
+        categories = []
+        for raw in self.request.query_params.getlist('inventory_category'):
+            categories.extend(part.strip().upper() for part in raw.split(',') if part.strip())
         classification = self.request.query_params.get('drug_classification')
         start_date = self.request.query_params.get('start_date')
         end_date = self.request.query_params.get('end_date')
@@ -110,13 +120,13 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
 
         if search:
             queryset = queryset.filter(
-                Q(name__icontains=search) | 
+                Q(name__icontains=search) |
                 Q(item_type__icontains=search)
             )
 
-        if category:
-            queryset = queryset.filter(inventory_category=category.upper())
-            
+        if categories:
+            queryset = queryset.filter(inventory_category__in=categories)
+
         if classification:
             queryset = queryset.filter(drug_classification=classification.upper())
 
