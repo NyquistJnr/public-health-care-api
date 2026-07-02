@@ -32,7 +32,10 @@ class ConsultationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = Consultation.objects.filter(appointment__facility=self.request.user.facility)
-        
+
+        if self.request.user.role == 'DOCTOR':
+            qs = qs.filter(doctor=self.request.user)
+
         patient_id = self.request.query_params.get('patient_id')
         appt_id = self.request.query_params.get('appointment_id')
         start_date = self.request.query_params.get('start_date')
