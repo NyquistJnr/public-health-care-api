@@ -18,6 +18,15 @@ _bp_validator = RegexValidator(
     message="BP must be in format Systolic/Diastolic (e.g., 120/80)"
 )
 
+
+class BlankableIntegerField(serializers.IntegerField):
+    """IntegerField that treats an empty string as null, like DRF's DecimalField already does."""
+    def validate_empty_values(self, data):
+        if isinstance(data, str) and data.strip() == '' and self.allow_null:
+            return (True, None)
+        return super().validate_empty_values(data)
+
+
 class MaternalScheduleRuleSerializer(serializers.ModelSerializer):
     """Serializer for configuring Global State-Level ANC/PNC Scheduling Rules."""
     class Meta:
@@ -161,11 +170,11 @@ class AppointmentForANCSerializer(serializers.Serializer):
     blood_pressure = serializers.CharField(
         max_length=7, required=False, allow_null=True, allow_blank=True, validators=[_bp_validator]
     )
-    pulse_rate = serializers.IntegerField(required=False, allow_null=True)
-    respiratory_rate = serializers.IntegerField(required=False, allow_null=True)
+    pulse_rate = BlankableIntegerField(required=False, allow_null=True)
+    respiratory_rate = BlankableIntegerField(required=False, allow_null=True)
     weight_kg = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
     height_cm = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
-    spo2 = serializers.IntegerField(required=False, allow_null=True)
+    spo2 = BlankableIntegerField(required=False, allow_null=True)
     vitals_notes = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
     # --- 6. ANC Clinical Data ---
@@ -401,11 +410,11 @@ class AppointmentForPNCSerializer(serializers.Serializer):
     blood_pressure = serializers.CharField(
         max_length=7, required=False, allow_null=True, allow_blank=True, validators=[_bp_validator]
     )
-    pulse_rate = serializers.IntegerField(required=False, allow_null=True)
-    respiratory_rate = serializers.IntegerField(required=False, allow_null=True)
+    pulse_rate = BlankableIntegerField(required=False, allow_null=True)
+    respiratory_rate = BlankableIntegerField(required=False, allow_null=True)
     weight_kg = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
     height_cm = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
-    spo2 = serializers.IntegerField(required=False, allow_null=True)
+    spo2 = BlankableIntegerField(required=False, allow_null=True)
     vitals_notes = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
     # --- 6. Maternal PNC Data ---

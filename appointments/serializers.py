@@ -49,6 +49,14 @@ _bp_validator = RegexValidator(
 )
 
 
+class BlankableIntegerField(serializers.IntegerField):
+    """IntegerField that treats an empty string as null, like DRF's DecimalField already does."""
+    def validate_empty_values(self, data):
+        if isinstance(data, str) and data.strip() == '' and self.allow_null:
+            return (True, None)
+        return super().validate_empty_values(data)
+
+
 class AppointmentWriteSerializer(serializers.ModelSerializer):
     """Used for creating and updating appointments.
 
@@ -84,11 +92,11 @@ class AppointmentWriteSerializer(serializers.ModelSerializer):
         allow_null=True, allow_blank=True,
         validators=[_bp_validator],
     )
-    pulse_rate = serializers.IntegerField(required=False, write_only=True, allow_null=True)
-    respiratory_rate = serializers.IntegerField(required=False, write_only=True, allow_null=True)
+    pulse_rate = BlankableIntegerField(required=False, write_only=True, allow_null=True)
+    respiratory_rate = BlankableIntegerField(required=False, write_only=True, allow_null=True)
     weight_kg = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, write_only=True, allow_null=True)
     height_cm = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, write_only=True, allow_null=True)
-    spo2 = serializers.IntegerField(required=False, write_only=True, allow_null=True)
+    spo2 = BlankableIntegerField(required=False, write_only=True, allow_null=True)
     vitals_notes = serializers.CharField(required=False, write_only=True, allow_null=True, allow_blank=True)
 
     class Meta:
