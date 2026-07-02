@@ -177,6 +177,7 @@ class ANCVisitViewSet(viewsets.ModelViewSet):
             OpenApiParameter(name='attendance_type', description='NEW or RETURN', required=False, type=str),
             OpenApiParameter(name='start_date', description='Filter by appointment date start', required=False, type=str),
             OpenApiParameter(name='end_date', description='Filter by appointment date end', required=False, type=str),
+            OpenApiParameter(name='search', description='Search by Appointment ID, Patient ID, Patient Name, Phone, or Email', required=False, type=str),
         ]
     )
     def list(self, request, *args, **kwargs):
@@ -191,6 +192,7 @@ class ANCVisitViewSet(viewsets.ModelViewSet):
         attendance_type = self.request.query_params.get('attendance_type')
         start_date = self.request.query_params.get('start_date')
         end_date = self.request.query_params.get('end_date')
+        search = self.request.query_params.get('search')
 
         if episode_id:
             qs = qs.filter(episode__id=episode_id)
@@ -200,6 +202,15 @@ class ANCVisitViewSet(viewsets.ModelViewSet):
             qs = qs.filter(appointment__appointment_date__gte=start_date)
         if end_date:
             qs = qs.filter(appointment__appointment_date__lte=end_date)
+        if search:
+            qs = qs.filter(
+                Q(appointment__appointment_id__icontains=search) |
+                Q(appointment__patient__patient_profile__patient_id__icontains=search) |
+                Q(appointment__patient__first_name__icontains=search) |
+                Q(appointment__patient__last_name__icontains=search) |
+                Q(appointment__patient__phone_number__icontains=search) |
+                Q(appointment__patient__email__icontains=search)
+            )
 
         return qs.order_by('-created_at')
 
@@ -232,6 +243,7 @@ class PNCVisitViewSet(viewsets.ModelViewSet):
             OpenApiParameter(name='outcome', description='TREATED, ADMITTED, or REFERRED', required=False, type=str),
             OpenApiParameter(name='start_date', description='Filter by appointment date start', required=False, type=str),
             OpenApiParameter(name='end_date', description='Filter by appointment date end', required=False, type=str),
+            OpenApiParameter(name='search', description='Search by Appointment ID, Patient ID, Patient Name, Phone, or Email', required=False, type=str),
         ]
     )
     def list(self, request, *args, **kwargs):
@@ -246,6 +258,7 @@ class PNCVisitViewSet(viewsets.ModelViewSet):
         outcome = self.request.query_params.get('outcome')
         start_date = self.request.query_params.get('start_date')
         end_date = self.request.query_params.get('end_date')
+        search = self.request.query_params.get('search')
 
         if episode_id:
             qs = qs.filter(episode__id=episode_id)
@@ -255,12 +268,21 @@ class PNCVisitViewSet(viewsets.ModelViewSet):
             qs = qs.filter(appointment__appointment_date__gte=start_date)
         if end_date:
             qs = qs.filter(appointment__appointment_date__lte=end_date)
+        if search:
+            qs = qs.filter(
+                Q(appointment__appointment_id__icontains=search) |
+                Q(appointment__patient__patient_profile__patient_id__icontains=search) |
+                Q(appointment__patient__first_name__icontains=search) |
+                Q(appointment__patient__last_name__icontains=search) |
+                Q(appointment__patient__phone_number__icontains=search) |
+                Q(appointment__patient__email__icontains=search)
+            )
 
         return qs.order_by('-created_at')
 
     def perform_create(self, serializer):
         visit = serializer.save(created_by=self.request.user)
-        
+
         previous_visits_count = PNCVisit.objects.filter(episode=visit.episode).count()
         visit.visit_sequence_number = previous_visits_count
         
