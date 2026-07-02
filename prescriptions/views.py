@@ -28,6 +28,7 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         summary="List & Filter Prescriptions",
         parameters=[
             OpenApiParameter(name='patient_id', description='Filter by Patient UUID', required=False, type=str),
+            OpenApiParameter(name='appointment_id', description='Filter by Appointment UUID', required=False, type=str),
             OpenApiParameter(name='status', description='PENDING, PARTIAL, DISPENSED, CANCELLED', required=False, type=str),
             OpenApiParameter(name='start_date', description='Filter from date (YYYY-MM-DD)', required=False, type=str),
             OpenApiParameter(name='end_date', description='Filter to date (YYYY-MM-DD)', required=False, type=str),
@@ -41,6 +42,7 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         qs = Prescription.objects.filter(patient__facility=self.request.user.facility)
         
         patient_id = self.request.query_params.get('patient_id')
+        appointment_id = self.request.query_params.get('appointment_id')
         rx_status = self.request.query_params.get('status')
         start_date = self.request.query_params.get('start_date')
         end_date = self.request.query_params.get('end_date')
@@ -48,6 +50,8 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
 
         if patient_id:
             qs = qs.filter(patient__id=patient_id)
+        if appointment_id:
+            qs = qs.filter(appointment__id=appointment_id)
         if rx_status:
             qs = qs.filter(status=rx_status.upper())
         if start_date:
