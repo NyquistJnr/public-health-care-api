@@ -15,7 +15,7 @@ class PrescriptionItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = PrescriptionItem
         fields = [
-            'id', 'inventory_item', 'custom_drug_name', 'medication_name', 
+            'id', 'inventory_item', 'custom_drug_name', 'medication_name', 'quantity',
             'dosage', 'frequency', 'duration', 'route', 'special_instructions'
         ]
 

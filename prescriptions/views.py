@@ -1,6 +1,8 @@
 # prescriptions/views.py
 from django.utils import timezone
-from rest_framework import viewsets
+from django.db import transaction
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db.models.functions import Coalesce
@@ -8,10 +10,11 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter
 from django.db.models import Sum, Q, F, Case, When, FloatField
 from .models import Prescription
 from inventory.models import InventoryItem, InventoryTransaction
+from inventory.services import dispense_fifo_stock, InsufficientStockError
 from core.pagination import StandardResultsSetPagination
 from .serializers import (
-    PrescriptionReadSerializer, PrescriptionCreateSerializer, 
-    PrescriptionStatsResponseSerializer, BasicPrescriptionStatsSerializer, 
+    PrescriptionReadSerializer, PrescriptionCreateSerializer,
+    PrescriptionStatsResponseSerializer, BasicPrescriptionStatsSerializer,
     PaginatedPharmacyActivitySerializer
 )
 
@@ -73,6 +76,40 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    @extend_schema(
+        summary="Dispense Prescription",
+        description=(
+            "Dispenses the entire prescription in one go: FIFO-deducts stock for every "
+            "inventory-linked item and marks the prescription DISPENSED. Fails atomically "
+            "(no stock is deducted) if any item has insufficient stock."
+        ),
+        request=None,
+    )
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def dispense(self, request, pk=None):
+        prescription = self.get_object()
+
+        if prescription.status in ('DISPENSED', 'CANCELLED'):
+            return Response(
+                {"detail": f"Prescription is already {prescription.get_status_display()}."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        for item in prescription.items.select_related('inventory_item').filter(inventory_item__isnull=False):
+            try:
+                dispense_fifo_stock(item.inventory_item, item.quantity, request.user)
+            except InsufficientStockError as e:
+                return Response(
+                    {"detail": f"Insufficient stock for '{item.get_medication_name()}': {e}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        prescription.status = 'DISPENSED'
+        prescription.save(update_fields=['status', 'updated_at'])
+
+        return Response(PrescriptionReadSerializer(prescription).data, status=status.HTTP_200_OK)
 
 @extend_schema(
     tags=["Prescriptions"],

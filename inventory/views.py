@@ -19,7 +19,7 @@ from .serializers import (
     DrugDetailSerializer, ExpiringDrugBatchSerializer, ExpiryAnalysisSerializer,
     ComprehensiveInventoryStatsSerializer
 )
-from .services import ScheduleEngine
+from .services import ScheduleEngine, dispense_fifo_stock, InsufficientStockError
 
 def calculate_facility_inventory_stats(facility):
     items = InventoryItem.objects.filter(facility=facility)
@@ -199,46 +199,14 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
         item = self.get_object()
         serializer = DispenseItemSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
         quantity_to_dispense = serializer.validated_data['quantity']
         today = timezone.now().date()
 
-        active_batches = ItemBatch.objects.filter(
-            item=item,
-            is_active=True,
-            remaining_quantity__gt=0
-        ).filter(
-            Q(expiry_date__gte=today) | Q(expiry_date__isnull=True)
-        ).select_for_update().order_by('expiry_date')
-
-        total_available = sum(batch.remaining_quantity for batch in active_batches)
-        if quantity_to_dispense > total_available:
-            return Response(
-                {"detail": f"Insufficient stock. Requested: {quantity_to_dispense}. Available: {total_available}."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        remaining_to_deduct = quantity_to_dispense
-
-        for batch in active_batches:
-            if remaining_to_deduct <= 0:
-                break
-
-            if batch.remaining_quantity >= remaining_to_deduct:
-                batch.remaining_quantity -= remaining_to_deduct
-                InventoryTransaction.objects.create(
-                    batch=batch, transaction_type='DISPENSE', quantity=-remaining_to_deduct, performed_by=request.user
-                )
-                batch.save(update_fields=['remaining_quantity', 'updated_at'])
-                remaining_to_deduct = 0
-            else:
-                deducted_from_this_batch = batch.remaining_quantity
-                remaining_to_deduct -= deducted_from_this_batch
-                batch.remaining_quantity = 0
-                InventoryTransaction.objects.create(
-                    batch=batch, transaction_type='DISPENSE', quantity=-deducted_from_this_batch, performed_by=request.user
-                )
-                batch.save(update_fields=['remaining_quantity', 'updated_at'])
+        try:
+            dispense_fifo_stock(item, quantity_to_dispense, request.user)
+        except InsufficientStockError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         next_due_date = None
         if item.schedule_rules:
