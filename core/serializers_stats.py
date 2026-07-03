@@ -46,7 +46,7 @@ class ModuleUsageStatsSerializer(serializers.Serializer):
 
 
 class TopActiveFacilitySerializer(serializers.Serializer):
-    facility_id = serializers.UUIDField(source='id')
+    facility_id = serializers.CharField(source='code')
     facility_name = serializers.CharField(source='name')
     usage_count = serializers.IntegerField()
     percentage = serializers.SerializerMethodField()
@@ -60,7 +60,7 @@ class TopActiveFacilitySerializer(serializers.Serializer):
 
 
 class FacilityUsageTableSerializer(serializers.Serializer):
-    facility_id = serializers.UUIDField(source='id')
+    facility_id = serializers.CharField(source='code')
     facility_name = serializers.CharField(source='name')
     number_of_users = serializers.IntegerField()
     number_of_logins = serializers.IntegerField()
