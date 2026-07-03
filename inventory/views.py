@@ -19,7 +19,7 @@ from .serializers import (
     DrugDetailSerializer, ExpiringDrugBatchSerializer, ExpiryAnalysisSerializer,
     ComprehensiveInventoryStatsSerializer
 )
-from .services import ScheduleEngine, dispense_fifo_stock, InsufficientStockError
+from .services import ScheduleEngine, dispense_fifo_stock, InsufficientStockError, annotate_stock_levels
 
 def calculate_facility_inventory_stats(facility):
     items = InventoryItem.objects.filter(facility=facility)
@@ -138,29 +138,7 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(created_at__date__lte=end_date)
 
         if status_param:
-            today = timezone.now().date()
-            
-            active_batches_filter = Q(batches__is_active=True) & (
-                Q(batches__expiry_date__gte=today) | Q(batches__expiry_date__isnull=True)
-            )
-
-            queryset = queryset.annotate(
-                annotated_total_stock=Coalesce(
-                    Sum('batches__remaining_quantity', filter=active_batches_filter), 0
-                ),
-                annotated_initial_stock=Coalesce(
-                    Sum('batches__initial_quantity', filter=active_batches_filter), 0
-                )
-            ).annotate(
-                calculated_threshold=Case(
-                    When(
-                        threshold_type='PERCENTAGE', 
-                        then=(F('annotated_initial_stock') * F('global_threshold')) / 100.0
-                    ),
-                    default=F('global_threshold'),
-                    output_field=FloatField()
-                )
-            )
+            queryset = annotate_stock_levels(queryset)
 
             status_param = status_param.upper()
             if status_param == 'OUT_OF_STOCK':

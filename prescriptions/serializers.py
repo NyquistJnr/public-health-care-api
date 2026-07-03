@@ -6,8 +6,14 @@ from .models import Prescription, PrescriptionItem
 class PrescriptionStatsResponseSerializer(serializers.Serializer):
     pending_prescriptions = serializers.IntegerField(help_text="Prescriptions ordered but not yet dispensed")
     dispensed = serializers.IntegerField(help_text="Prescriptions fully dispensed")
-    low_stock_alerts = serializers.IntegerField(help_text="Drugs that have fallen below their global threshold")
-    adr_reports = serializers.IntegerField(help_text="Adverse Drug Reactions (Default 0 for now)")
+    low_stock_alerts = serializers.IntegerField(help_text="Drugs & Consumables that have fallen below their global threshold")
+    adr_reports = serializers.IntegerField(help_text="Adverse Drug Reaction reports filed")
+
+
+class PharmacyPieChartSerializer(serializers.Serializer):
+    dispensed = serializers.IntegerField(help_text="Number of dispense transactions (Drugs & Consumables) in the period")
+    refilled = serializers.IntegerField(help_text="Number of refill/restock transactions (Drugs & Consumables) in the period")
+    out_of_stock = serializers.IntegerField(help_text="Number of Drug/Consumable items currently at zero stock")
 
 class PrescriptionItemSerializer(serializers.ModelSerializer):
     medication_name = serializers.CharField(source='get_medication_name', read_only=True)
@@ -77,7 +83,7 @@ class BasicPrescriptionStatsSerializer(serializers.Serializer):
 
 
 class PharmacyActivityItemSerializer(serializers.Serializer):
-    activity_type = serializers.CharField(help_text="DISPENSE, REFILL, LOW_STOCK, OUT_OF_STOCK")
+    activity_type = serializers.CharField(help_text="DISPENSE, REFILL, LOW_STOCK, OUT_OF_STOCK, ADR_REPORT")
     item_name = serializers.CharField()
     description = serializers.CharField()
     timestamp = serializers.DateTimeField()

@@ -1,8 +1,38 @@
 # inventory/services.py
 from datetime import timedelta, date
 from typing import Optional
-from django.db.models import Q
+from django.db.models import Q, Sum, F, Case, When, FloatField
+from django.db.models.functions import Coalesce
 from django.utils import timezone
+
+
+def annotate_stock_levels(queryset):
+    """
+    Annotates an InventoryItem queryset with `annotated_total_stock`,
+    `annotated_initial_stock`, and `calculated_threshold`, computed from
+    active, non-expired batches. Used to determine low-stock/out-of-stock items.
+    """
+    today = timezone.now().date()
+    active_batches_filter = Q(batches__is_active=True) & (
+        Q(batches__expiry_date__gte=today) | Q(batches__expiry_date__isnull=True)
+    )
+    return queryset.annotate(
+        annotated_total_stock=Coalesce(
+            Sum('batches__remaining_quantity', filter=active_batches_filter), 0
+        ),
+        annotated_initial_stock=Coalesce(
+            Sum('batches__initial_quantity', filter=active_batches_filter), 0
+        )
+    ).annotate(
+        calculated_threshold=Case(
+            When(
+                threshold_type='PERCENTAGE',
+                then=(F('annotated_initial_stock') * F('global_threshold')) / 100.0
+            ),
+            default=F('global_threshold'),
+            output_field=FloatField()
+        )
+    )
 
 
 class InsufficientStockError(Exception):
