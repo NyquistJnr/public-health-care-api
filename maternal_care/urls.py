@@ -2,10 +2,10 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    MaternalCareEpisodeViewSet, ANCVisitViewSet, 
+    MaternalCareEpisodeViewSet, ANCVisitViewSet,
     PNCVisitViewSet, PNCNewbornAssessmentViewSet,
     MaternalScheduleRuleViewSet, AppointmentForANCView,
-    AppointmentForPNCView
+    AppointmentForPNCView, UpcomingMaternalFollowUpsView
 )
 
 router = DefaultRouter()
@@ -18,5 +18,6 @@ router.register(r'pnc-newborn-assessments', PNCNewbornAssessmentViewSet, basenam
 urlpatterns = [
     path('appointment-for-anc/', AppointmentForANCView.as_view(), name='unified-appointment-anc'),
     path('appointment-for-pnc/', AppointmentForPNCView.as_view(), name='unified-appointment-pnc'),
+    path('follow-ups/upcoming/', UpcomingMaternalFollowUpsView.as_view(), name='upcoming-maternal-follow-ups'),
     path('', include(router.urls)),
 ]

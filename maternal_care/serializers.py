@@ -127,6 +127,35 @@ class PNCVisitSerializer(serializers.ModelSerializer):
     def get_patient_name(self, obj):
         return _patient_full_name(obj.appointment.patient)
 
+
+class MaternalFollowUpSerializer(serializers.Serializer):
+    """A single upcoming ANC/PNC follow-up, formatted for a dashboard card."""
+    care_type = serializers.ChoiceField(choices=['ANC', 'PNC'])
+    visit_id = serializers.UUIDField(help_text="The most recent ANCVisit/PNCVisit that generated this follow-up")
+    episode_id = serializers.CharField(help_text="Human-readable episode ID, e.g. MAT-PLA-000005")
+    patient_id = serializers.UUIDField()
+    patient_name = serializers.CharField()
+    patient_display_id = serializers.CharField()
+    next_visit_date = serializers.DateField()
+    due_status = serializers.ChoiceField(choices=['OVERDUE', 'DUE_TODAY', 'UPCOMING'])
+    due_in_days = serializers.IntegerField(help_text="Negative if overdue, 0 if due today, positive if upcoming")
+    upcoming_visit_number = serializers.IntegerField(help_text="Which visit number in the sequence this follow-up will be")
+    gestational_weeks = serializers.IntegerField(allow_null=True, help_text="ANC only - weeks pregnant as of next_visit_date")
+    is_high_risk = serializers.BooleanField()
+    tag = serializers.ChoiceField(choices=['Urgent', 'High risk', 'ANC Due', 'Postnatal'])
+    title = serializers.CharField(help_text="Ready-to-render card title, e.g. 'Blessing Nwachukwu · ANC visit due today'")
+    subtitle = serializers.CharField(help_text="Ready-to-render card subtitle, e.g. '28 weeks · 4th antenatal visit'")
+
+
+class PaginatedMaternalFollowUpSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    total_pages = serializers.IntegerField()
+    current_page = serializers.IntegerField()
+    next = serializers.URLField(allow_null=True, required=False)
+    previous = serializers.URLField(allow_null=True, required=False)
+    results = MaternalFollowUpSerializer(many=True)
+
+
 class NewbornRegistrationSerializer(serializers.Serializer):
     """Details for a single newborn (used during delivery recording)."""
     first_name = serializers.CharField(max_length=150, help_text="e.g., Baby 1, or actual name if given")

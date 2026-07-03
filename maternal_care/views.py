@@ -1,27 +1,84 @@
 # maternal_care/views.py
 import uuid
+import calendar
+from datetime import date, timedelta
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, OuterRef, Exists
 from django.contrib.auth.models import Group
 from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from core.models import User, PatientProfile
+from core.pagination import StandardResultsSetPagination
 from .services import MaternalScheduleEngine
 from .models import (
-    MaternalCareEpisode, ANCVisit, PNCVisit, 
+    MaternalCareEpisode, ANCVisit, PNCVisit,
     PNCNewbornAssessment, MaternalScheduleRule
 )
 from .serializers import (
-    MaternalCareEpisodeSerializer, ANCVisitSerializer, 
+    MaternalCareEpisodeSerializer, ANCVisitSerializer,
     PNCVisitSerializer, PNCNewbornAssessmentSerializer,
     RecordDeliverySerializer, EpisodeBabySerializer,
     MaternalScheduleRuleSerializer, AppointmentForANCSerializer,
-    AppointmentForPNCSerializer
+    AppointmentForPNCSerializer, PaginatedMaternalFollowUpSerializer
 )
+
+
+def _ordinal(n):
+    if 11 <= (n % 100) <= 13:
+        suffix = 'th'
+    else:
+        suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+    return f"{n}{suffix}"
+
+
+def _due_status(next_visit_date, today):
+    delta_days = (next_visit_date - today).days
+    if delta_days < 0:
+        text = f"{abs(delta_days)} day{'s' if abs(delta_days) != 1 else ''} overdue"
+        return 'OVERDUE', delta_days, text
+    if delta_days == 0:
+        return 'DUE_TODAY', 0, "today"
+    return 'UPCOMING', delta_days, f"in {delta_days} day{'s' if delta_days != 1 else ''}"
+
+
+def _follow_up_tag(due_status, is_high_risk, care_type):
+    if due_status == 'OVERDUE':
+        return 'Urgent'
+    if is_high_risk:
+        return 'High risk'
+    return 'ANC Due' if care_type == 'ANC' else 'Postnatal'
+
+
+def _latest_visits_with_pending_followup(model, facility, date_lower_bound, date_upper_bound, search):
+    """Returns the most recent visit per episode (i.e. the one whose next_visit_date is still outstanding)."""
+    newer_visit_exists = model.objects.filter(
+        episode=OuterRef('episode'), visit_sequence_number__gt=OuterRef('visit_sequence_number')
+    )
+    qs = model.objects.filter(
+        episode__patient__facility=facility,
+        next_visit_date__isnull=False
+    ).annotate(
+        has_newer_visit=Exists(newer_visit_exists)
+    ).filter(has_newer_visit=False).select_related(
+        'episode', 'episode__patient', 'episode__patient__patient_profile'
+    )
+
+    if date_lower_bound:
+        qs = qs.filter(next_visit_date__gte=date_lower_bound)
+    if date_upper_bound:
+        qs = qs.filter(next_visit_date__lte=date_upper_bound)
+    if search:
+        qs = qs.filter(
+            Q(episode__patient__first_name__icontains=search) |
+            Q(episode__patient__last_name__icontains=search) |
+            Q(episode__patient__patient_profile__patient_id__icontains=search)
+        )
+    return qs
 
 
 @extend_schema(tags=["Maternal Care Setup - State Admin and Doctor"])
@@ -396,3 +453,126 @@ class AppointmentForPNCView(APIView):
                 "assessments_recorded": pnc_visit.newborn_assessments.count()
             }
         }, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(
+    tags=["Maternal Care"],
+    summary="Get Upcoming ANC & PNC Follow-Ups",
+    description=(
+        "Returns a combined, card-ready feed of outstanding ANC and PNC follow-ups - the next "
+        "recommended visit for each pregnancy/postpartum episode, based on its most recent visit."
+    ),
+    parameters=[
+        OpenApiParameter(name='care_type', description='Filter to ANC or PNC only. Omit for both.', required=False, type=str),
+        OpenApiParameter(name='days', description='Only show follow-ups due within the next N days (overdue ones are always included).', required=False, type=int),
+        OpenApiParameter(name='month', description='Only show follow-ups due within a specific calendar month (YYYY-MM). Takes precedence over `days` if both are passed.', required=False, type=str),
+        OpenApiParameter(name='search', description='Search by Patient Name or Patient ID', required=False, type=str),
+        OpenApiParameter(name='page', description='Page number', required=False, type=int),
+        OpenApiParameter(name='page_size', description='Items per page', required=False, type=int),
+    ],
+    responses=PaginatedMaternalFollowUpSerializer
+)
+class UpcomingMaternalFollowUpsView(APIView):
+    def get(self, request):
+        facility = request.user.facility
+        today = timezone.now().date()
+
+        care_type = request.query_params.get('care_type')
+        days_param = request.query_params.get('days')
+        month_param = request.query_params.get('month')
+        search = request.query_params.get('search')
+
+        date_lower_bound = None
+        date_upper_bound = None
+
+        if month_param:
+            try:
+                year, month_num = (int(part) for part in month_param.split('-'))
+                date_lower_bound = date(year, month_num, 1)
+                date_upper_bound = date(year, month_num, calendar.monthrange(year, month_num)[1])
+            except (ValueError, TypeError):
+                raise ValidationError({"month": "Must be in YYYY-MM format, e.g. 2026-09."})
+        elif days_param:
+            try:
+                date_upper_bound = today + timedelta(days=int(days_param))
+            except (ValueError, TypeError):
+                raise ValidationError({"days": "Must be an integer."})
+
+        results = []
+        if not care_type or care_type.upper() == 'ANC':
+            results.extend(self._build_anc_follow_ups(facility, today, date_lower_bound, date_upper_bound, search))
+        if not care_type or care_type.upper() == 'PNC':
+            results.extend(self._build_pnc_follow_ups(facility, today, date_lower_bound, date_upper_bound, search))
+
+        results.sort(key=lambda item: item['next_visit_date'])
+
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(results, request, view=self)
+        return paginator.get_paginated_response(page)
+
+    def _build_anc_follow_ups(self, facility, today, date_lower_bound, date_upper_bound, search):
+        visits = _latest_visits_with_pending_followup(ANCVisit, facility, date_lower_bound, date_upper_bound, search)
+
+        items = []
+        for visit in visits:
+            episode = visit.episode
+            patient = episode.patient
+            patient_name = f"{patient.first_name} {patient.last_name}"
+            due_status, due_in_days, due_text = _due_status(visit.next_visit_date, today)
+            is_high_risk = bool(visit.risk_factors and visit.risk_factors.strip())
+            upcoming_visit_number = visit.visit_sequence_number + 1
+
+            gestational_weeks = None
+            if episode.last_menstrual_period:
+                gestational_weeks = (visit.next_visit_date - episode.last_menstrual_period).days // 7
+            weeks_text = f"{gestational_weeks} weeks" if gestational_weeks is not None else "Gestational age unknown"
+
+            items.append({
+                "care_type": "ANC",
+                "visit_id": visit.id,
+                "episode_id": episode.episode_id,
+                "patient_id": patient.id,
+                "patient_name": patient_name,
+                "patient_display_id": getattr(patient.patient_profile, 'patient_id', None),
+                "next_visit_date": visit.next_visit_date,
+                "due_status": due_status,
+                "due_in_days": due_in_days,
+                "upcoming_visit_number": upcoming_visit_number,
+                "gestational_weeks": gestational_weeks,
+                "is_high_risk": is_high_risk,
+                "tag": _follow_up_tag(due_status, is_high_risk, 'ANC'),
+                "title": f"{patient_name} · ANC visit due {due_text}",
+                "subtitle": f"{weeks_text} · {_ordinal(upcoming_visit_number)} antenatal visit",
+            })
+        return items
+
+    def _build_pnc_follow_ups(self, facility, today, date_lower_bound, date_upper_bound, search):
+        visits = _latest_visits_with_pending_followup(PNCVisit, facility, date_lower_bound, date_upper_bound, search)
+
+        items = []
+        for visit in visits:
+            episode = visit.episode
+            patient = episode.patient
+            patient_name = f"{patient.first_name} {patient.last_name}"
+            due_status, due_in_days, due_text = _due_status(visit.next_visit_date, today)
+            is_high_risk = visit.outcome in ('ADMITTED', 'REFERRED')
+            upcoming_visit_number = visit.visit_sequence_number + 1
+
+            items.append({
+                "care_type": "PNC",
+                "visit_id": visit.id,
+                "episode_id": episode.episode_id,
+                "patient_id": patient.id,
+                "patient_name": patient_name,
+                "patient_display_id": getattr(patient.patient_profile, 'patient_id', None),
+                "next_visit_date": visit.next_visit_date,
+                "due_status": due_status,
+                "due_in_days": due_in_days,
+                "upcoming_visit_number": upcoming_visit_number,
+                "gestational_weeks": None,
+                "is_high_risk": is_high_risk,
+                "tag": _follow_up_tag(due_status, is_high_risk, 'PNC'),
+                "title": f"{patient_name} · PNC visit due {due_text}",
+                "subtitle": f"{visit.timing_of_visit} · {_ordinal(upcoming_visit_number)} postnatal visit",
+            })
+        return items
