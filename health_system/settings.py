@@ -218,13 +218,17 @@ SPECTACULAR_SETTINGS = {
         'ReferralTypeEnum': 'referrals.models.Referral.TYPE_CHOICES',
         'PncVisitOutcomeEnum': 'maternal_care.models.PNCVisit.OUTCOME_CHOICES',
         'PncNewbornAssessmentOutcomeEnum': 'maternal_care.models.PNCNewbornAssessment.OUTCOME_CHOICES',
+        'LabRequestStatusEnum': 'laboratory.models.LabRequest.STATUS_CHOICES',
+        'MaternalCareEpisodeStatusEnum': 'maternal_care.models.MaternalCareEpisode.STATUS_CHOICES',
+        'AdverseEventStatusEnum': 'adverse_events.models.AdverseEvent.STATUS_CHOICES',
     },
 }
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend' # 'django.core.mail.backends.console.EmailBackend'
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
 CORS_ALLOW_ALL_ORIGINS = True
 

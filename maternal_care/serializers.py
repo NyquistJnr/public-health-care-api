@@ -3,6 +3,7 @@ import uuid
 from django.contrib.auth.models import Group
 from django.core.validators import RegexValidator
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 from django.db import transaction
 from django.utils import timezone
 from .models import (
@@ -82,6 +83,7 @@ class ANCVisitSerializer(serializers.ModelSerializer):
             'recommended_tasks', 'created_at', 'updated_at', 'created_by'
         ]
 
+    @extend_schema_field(serializers.CharField)
     def get_patient_name(self, obj):
         return _patient_full_name(obj.appointment.patient)
 
@@ -124,6 +126,7 @@ class PNCVisitSerializer(serializers.ModelSerializer):
             'recommended_tasks', 'created_at', 'updated_at', 'created_by'
         ]
 
+    @extend_schema_field(serializers.CharField)
     def get_patient_name(self, obj):
         return _patient_full_name(obj.appointment.patient)
 

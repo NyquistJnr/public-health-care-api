@@ -1,5 +1,6 @@
 # adverse_events/serializers.py
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 from core.models import User
 from inventory.models import InventoryItem
 from .models import AdverseEvent
@@ -22,9 +23,11 @@ class AdverseEventSerializer(serializers.ModelSerializer):
             'detailed_symptoms', 'status', 'created_at'
         ]
 
+    @extend_schema_field(serializers.CharField)
     def get_patient_name(self, obj):
         return f"{obj.patient.first_name} {obj.patient.last_name}"
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_reported_by_name(self, obj):
         if obj.reported_by:
             return f"{obj.reported_by.first_name} {obj.reported_by.last_name}"
@@ -39,6 +42,7 @@ class AdverseEventDetailSerializer(AdverseEventSerializer):
     class Meta(AdverseEventSerializer.Meta):
         fields = AdverseEventSerializer.Meta.fields + ['patient_age', 'patient_sex']
 
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_patient_age(self, obj):
         profile = getattr(obj.patient, 'patient_profile', None)
         return profile.age if profile else None
