@@ -38,6 +38,7 @@ ALLOWED_HOSTS = ['*']
 SHARED_APPS = (
     'django_tenants',
     'tenants',
+    'registry',
     'drf_spectacular',
     'corsheaders',
     'django.contrib.contenttypes',
@@ -224,6 +225,7 @@ SPECTACULAR_SETTINGS = {
         'LabRequestStatusEnum': 'laboratory.models.LabRequest.STATUS_CHOICES',
         'MaternalCareEpisodeStatusEnum': 'maternal_care.models.MaternalCareEpisode.STATUS_CHOICES',
         'AdverseEventStatusEnum': 'adverse_events.models.AdverseEvent.STATUS_CHOICES',
+        'DiseaseSeverityEnum': 'registry.models.Disease.SEVERITY_CHOICES',
     },
 }
 

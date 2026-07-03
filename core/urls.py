@@ -14,8 +14,10 @@ from .view_audit_log import (
 )
 from .view_stats import (
     DashboardStatsView, UserActivityTrendView, ModuleUsageStatsView,
-    TopActiveFacilitiesView, FacilityUsageTableView
+    TopActiveFacilitiesView, FacilityUsageTableView,
+    FailedLoginsByUserView, FailedLoginsByFacilityView, FailedLoginsUnknownEmailsView
 )
+from .view_alerts import ActiveAlertsView
 
 from .view_qstash_webhook import QStashWebhookView
 
@@ -56,6 +58,16 @@ stats_patterns = [
     path('module-usage/', ModuleUsageStatsView.as_view(), name='stats_module_usage'),
     path('top-active-facilities/', TopActiveFacilitiesView.as_view(), name='stats_top_active_facilities'),
     path('facility-usage-table/', FacilityUsageTableView.as_view(), name='stats_facility_usage_table'),
+    path('failed-logins-by-user/', FailedLoginsByUserView.as_view(), name='stats_failed_logins_by_user'),
+    path('failed-logins-by-facility/', FailedLoginsByFacilityView.as_view(), name='stats_failed_logins_by_facility'),
+    path('failed-logins-unknown-emails/', FailedLoginsUnknownEmailsView.as_view(), name='stats_failed_logins_unknown_emails'),
 ]
 
-urlpatterns = auth_patterns + user_management_patterns + patient_patterns + system_patterns + stats_patterns
+alerts_patterns = [
+    path('active/', ActiveAlertsView.as_view(), name='alerts_active'),
+]
+
+urlpatterns = (
+    auth_patterns + user_management_patterns + patient_patterns + system_patterns
+    + stats_patterns + alerts_patterns
+)

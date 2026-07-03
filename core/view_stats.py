@@ -10,12 +10,15 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from facilities.models import Facility
-from .models import LoginEvent, ModuleUsageLog, UserSession
+from .models import FailedLoginAttempt, LoginEvent, ModuleUsageLog, UserSession
 from .pagination import StandardResultsSetPagination
 from .permissions import IsStateAdmin
 from .serializers_stats import (
     DashboardStatsSerializer,
     FacilityUsageTableSerializer,
+    FailedLoginsByFacilitySerializer,
+    FailedLoginsByUserSerializer,
+    FailedLoginsUnknownEmailSerializer,
     ModuleUsageStatsSerializer,
     TopActiveFacilitySerializer,
     UserActivityTrendSerializer,
@@ -204,3 +207,60 @@ class FacilityUsageTableView(generics.ListAPIView):
             number_of_logins=Count('login_events', filter=Q(login_events__timestamp__date__range=[start_date, end_date])),
             last_active_at=Max('staff_members__last_active'),
         ).order_by('-last_active_at')
+
+
+@extend_schema(
+    tags=["Analytics"],
+    summary="Get Failed Login Attempts, Grouped by User (Paginated)",
+    parameters=DATE_RANGE_PARAMETERS,
+    responses=FailedLoginsByUserSerializer
+)
+class FailedLoginsByUserView(generics.ListAPIView):
+    permission_classes = [IsStateAdmin]
+    serializer_class = FailedLoginsByUserSerializer
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        start_date, end_date = get_validated_date_range(self.request)
+        return FailedLoginAttempt.objects.filter(
+            timestamp__date__range=[start_date, end_date], user__isnull=False
+        ).values(
+            'user', 'user__email', 'user__first_name', 'user__last_name', 'user__staff_id'
+        ).annotate(count=Count('id')).order_by('-count')
+
+
+@extend_schema(
+    tags=["Analytics"],
+    summary="Get Failed Login Attempts, Grouped by Facility (Paginated)",
+    parameters=DATE_RANGE_PARAMETERS,
+    responses=FailedLoginsByFacilitySerializer
+)
+class FailedLoginsByFacilityView(generics.ListAPIView):
+    permission_classes = [IsStateAdmin]
+    serializer_class = FailedLoginsByFacilitySerializer
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        start_date, end_date = get_validated_date_range(self.request)
+        return FailedLoginAttempt.objects.filter(
+            timestamp__date__range=[start_date, end_date], facility__isnull=False
+        ).values('facility__code', 'facility__name').annotate(count=Count('id')).order_by('-count')
+
+
+@extend_schema(
+    tags=["Analytics"],
+    summary="Get Failed Login Attempts for Unknown Emails (Paginated)",
+    description="Failed login attempts where the email did not match any account in the system.",
+    parameters=DATE_RANGE_PARAMETERS,
+    responses=FailedLoginsUnknownEmailSerializer
+)
+class FailedLoginsUnknownEmailsView(generics.ListAPIView):
+    permission_classes = [IsStateAdmin]
+    serializer_class = FailedLoginsUnknownEmailSerializer
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        start_date, end_date = get_validated_date_range(self.request)
+        return FailedLoginAttempt.objects.filter(
+            timestamp__date__range=[start_date, end_date], user__isnull=True
+        ).values('attempted_email').annotate(count=Count('id')).order_by('-count')

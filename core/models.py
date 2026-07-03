@@ -397,3 +397,44 @@ class ModuleUsageLog(models.Model):
 
     def __str__(self):
         return f"{self.user} used {self.module} at {self.timestamp}"
+
+
+class FailedLoginAttempt(models.Model):
+    """One row per failed login. Tracked even when the attempted email matches no account."""
+    REASON_CHOICES = (
+        ('NO_SUCH_EMAIL', 'No account with this email'),
+        ('WRONG_PASSWORD', 'Wrong password'),
+        ('ACCOUNT_SUSPENDED', 'Account suspended'),
+        ('FACILITY_SUSPENDED', 'Facility suspended'),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    attempted_email = models.CharField(max_length=255, db_index=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='failed_login_attempts')
+    facility = models.ForeignKey('facilities.Facility', on_delete=models.SET_NULL, null=True, blank=True, related_name='failed_login_attempts')
+    reason = models.CharField(max_length=20, choices=REASON_CHOICES)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"Failed login for {self.attempted_email} ({self.reason}) at {self.timestamp}"
+
+
+class ErrorLog(models.Model):
+    """One row per unhandled/5xx server error."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    error_message = models.TextField()
+    endpoint = models.CharField(max_length=255, null=True, blank=True)
+    status_code = models.PositiveIntegerField()
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='error_logs')
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"{self.status_code} at {self.endpoint} - {self.timestamp}"

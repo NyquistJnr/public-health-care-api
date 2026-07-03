@@ -3,6 +3,7 @@ from rest_framework import serializers
 from django.db import transaction
 from .models import Consultation
 from drf_spectacular.utils import extend_schema_field, inline_serializer
+from registry.serializers import DiseaseSummarySerializer
 
 class ConsultationReadSerializer(serializers.ModelSerializer):
     patient_display_id = serializers.CharField(source='patient.patient_profile.patient_id', read_only=True)
@@ -10,17 +11,19 @@ class ConsultationReadSerializer(serializers.ModelSerializer):
     patient_age = serializers.CharField(source='patient.patient_profile.age_group', read_only=True)
     patient_gender = serializers.CharField(source='patient.patient_profile.get_sex_display', read_only=True)
     doctor_name = serializers.CharField(source='doctor.get_full_name', read_only=True)
-    
+    diagnosed_disease = DiseaseSummarySerializer(read_only=True)
+
     vitals = serializers.SerializerMethodField()
 
     class Meta:
         model = Consultation
         fields = [
-            'id', 'consultation_id', 'appointment', 'patient', 'patient_display_id', 
+            'id', 'consultation_id', 'appointment', 'patient', 'patient_display_id',
             'patient_name', 'patient_age', 'patient_gender', 'doctor', 'doctor_name',
             'chief_complaint', 'presenting_complaint', 'history_of_present_complaint',
-            'past_medical_history', 'examination_findings', 'primary_diagnosis', 
-            'secondary_diagnosis', 'treatment_plan', 'additional_notes', 'vitals', 'created_at'
+            'past_medical_history', 'examination_findings', 'primary_diagnosis',
+            'secondary_diagnosis', 'diagnosed_disease', 'treatment_plan', 'additional_notes',
+            'vitals', 'created_at'
         ]
 
     @extend_schema_field(
@@ -56,10 +59,10 @@ class ConsultationCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Consultation
         fields = [
-            'appointment', 'chief_complaint', 'presenting_complaint', 
-            'history_of_present_complaint', 'past_medical_history', 
-            'examination_findings', 'primary_diagnosis', 'secondary_diagnosis', 
-            'treatment_plan', 'additional_notes'
+            'appointment', 'chief_complaint', 'presenting_complaint',
+            'history_of_present_complaint', 'past_medical_history',
+            'examination_findings', 'primary_diagnosis', 'secondary_diagnosis',
+            'diagnosed_disease', 'treatment_plan', 'additional_notes'
         ]
 
     @transaction.atomic

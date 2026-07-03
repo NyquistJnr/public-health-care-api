@@ -74,3 +74,28 @@ class FacilityUsageTableSerializer(serializers.Serializer):
     @extend_schema_field(serializers.CharField())
     def get_status(self, obj):
         return facility_status_from_last_active(obj.last_active_at)
+
+
+class FailedLoginsByUserSerializer(serializers.Serializer):
+    user_id = serializers.UUIDField(source='user')
+    email = serializers.CharField(source='user__email')
+    name = serializers.SerializerMethodField()
+    staff_id = serializers.CharField(source='user__staff_id')
+    failed_attempts = serializers.IntegerField(source='count')
+
+    @extend_schema_field(serializers.CharField())
+    def get_name(self, obj):
+        first = obj.get('user__first_name') or ''
+        last = obj.get('user__last_name') or ''
+        return f"{first} {last}".strip()
+
+
+class FailedLoginsByFacilitySerializer(serializers.Serializer):
+    facility_id = serializers.CharField(source='facility__code')
+    facility_name = serializers.CharField(source='facility__name')
+    failed_attempts = serializers.IntegerField(source='count')
+
+
+class FailedLoginsUnknownEmailSerializer(serializers.Serializer):
+    attempted_email = serializers.CharField()
+    failed_attempts = serializers.IntegerField(source='count')

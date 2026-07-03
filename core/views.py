@@ -2,6 +2,7 @@
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework import generics
 from rest_framework.permissions import AllowAny
+from rest_framework.exceptions import AuthenticationFailed
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from drf_spectacular.utils import extend_schema
@@ -11,20 +12,21 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .serializers import (
-    EmailTokenObtainPairSerializer, 
-    ForgotPasswordSerializer, 
+    EmailTokenObtainPairSerializer,
+    ForgotPasswordSerializer,
     ResetPasswordSerializer,
     UserInviteSerializer,
     StateAdminUserInviteSerializer,
     UserProfileSerializer
 )
-from .models import User, LoginEvent
+from .models import User, LoginEvent, FailedLoginAttempt, ErrorLog
 from django.http import JsonResponse
 from rest_framework.permissions import IsAuthenticated
 from core.tasks import dispatch_auth_email
 from core.audit_context import get_client_ip
 from django.db import connection
 from django.conf import settings
+import sys
 
 @extend_schema(
     tags=["Authentication"],
@@ -36,7 +38,12 @@ class CustomLoginView(TokenObtainPairView):
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+
+        try:
+            serializer.is_valid(raise_exception=True)
+        except AuthenticationFailed:
+            self._log_failed_attempt(request)
+            raise
 
         user = serializer.user
         LoginEvent.objects.create(
@@ -46,6 +53,30 @@ class CustomLoginView(TokenObtainPairView):
         )
 
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
+    def _log_failed_attempt(self, request):
+        email = (request.data.get('email') or '').strip()
+        if not email:
+            return
+
+        matched_user = User.objects.filter(email__iexact=email).first()
+
+        if not matched_user:
+            reason = 'NO_SUCH_EMAIL'
+        elif not matched_user.is_active:
+            reason = 'ACCOUNT_SUSPENDED'
+        elif matched_user.facility and not matched_user.facility.is_active:
+            reason = 'FACILITY_SUSPENDED'
+        else:
+            reason = 'WRONG_PASSWORD'
+
+        FailedLoginAttempt.objects.create(
+            attempted_email=email,
+            user=matched_user,
+            facility=matched_user.facility if matched_user else None,
+            reason=reason,
+            ip_address=get_client_ip(request),
+        )
 
 @extend_schema(
     tags=["Authentication"],
@@ -202,6 +233,20 @@ def global_404(request, exception=None):
 
 def global_500(request):
     """Catches critical server crashes and returns standard JSON instead of HTML."""
+    _, exc_value, _ = sys.exc_info()
+    try:
+        # Best-effort logging - this handler runs in an already-degraded state,
+        # so a logging failure here must never mask the original 500.
+        ErrorLog.objects.create(
+            error_message=str(exc_value) if exc_value else "Unknown server error",
+            endpoint=request.path,
+            status_code=500,
+            ip_address=get_client_ip(request),
+            user=request.user if getattr(request, 'user', None) and request.user.is_authenticated else None,
+        )
+    except Exception:
+        pass
+
     return JsonResponse({
         "status": "error",
         "message": "An internal server error occurred.",

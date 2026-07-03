@@ -16,6 +16,10 @@ class Consultation(BaseModel):
     examination_findings = models.TextField(blank=True, null=True)
     primary_diagnosis = models.CharField(max_length=255)
     secondary_diagnosis = models.CharField(max_length=255, blank=True, null=True)
+    diagnosed_disease = models.ForeignKey(
+        'registry.Disease', on_delete=models.SET_NULL, null=True, blank=True, related_name='consultations',
+        help_text="Structured link to the global disease registry, used for outbreak/severity alerting."
+    )
     treatment_plan = models.TextField()
     additional_notes = models.TextField(blank=True, null=True)
 

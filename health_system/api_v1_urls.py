@@ -5,7 +5,8 @@ from core.urls import (
     user_management_patterns,
     patient_patterns,
     system_patterns,
-    stats_patterns
+    stats_patterns,
+    alerts_patterns
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
@@ -15,7 +16,9 @@ urlpatterns = [
     path('patients/', include((patient_patterns, 'patients'))),
     path('system/', include((system_patterns, 'system'))),
     path('stats/', include((stats_patterns, 'stats'))),
+    path('alerts/', include((alerts_patterns, 'alerts'))),
 
+    path('registry/', include('registry.urls')),
     path('facilities/', include('facilities.urls')),
     path('inventory/', include('inventory.urls')),
     path('appointments/', include('appointments.urls')),
