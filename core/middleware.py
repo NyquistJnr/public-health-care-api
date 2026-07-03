@@ -1,5 +1,8 @@
+from datetime import timedelta
+
 from django.conf import settings
 from django.db import connection
+from django.utils import timezone
 
 from .audit_context import current_request
 
@@ -91,3 +94,71 @@ class AuditContextMiddleware:
         response = self.get_response(request)
         current_request.reset(token)
         return response
+
+
+class ActivityTrackingMiddleware:
+    """
+    Stamps User.last_active, maintains idle-timeout UserSession rows, and logs
+    ModuleUsageLog entries for requests under a tracked module path. Runs after
+    the view so DRF has resolved request.user (DRF's Request.user setter syncs
+    the authenticated user back onto the underlying Django request).
+    """
+
+    IDLE_TIMEOUT = timedelta(minutes=30)
+    WRITE_THROTTLE = timedelta(seconds=60)
+
+    MODULE_PATH_MAP = [
+        ('/api/v1/patients/', 'PATIENT_REGISTRY'),
+        ('/api/v1/appointments/', 'PATIENT_RECORDS'),
+        ('/api/v1/consultations/', 'PATIENT_RECORDS'),
+        ('/api/v1/immunization/', 'PATIENT_RECORDS'),
+        ('/api/v1/maternal-care/', 'PATIENT_RECORDS'),
+        ('/api/v1/referrals/', 'PATIENT_RECORDS'),
+        ('/api/v1/adverse-events/', 'PATIENT_RECORDS'),
+        ('/api/v1/doctor/', 'PATIENT_RECORDS'),
+        ('/api/v1/nurse/', 'PATIENT_RECORDS'),
+        ('/api/v1/prescriptions/', 'PHARMACY'),
+        ('/api/v1/laboratory/', 'LAB'),
+    ]
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+
+        user = getattr(request, 'user', None)
+        if user is not None and getattr(user, 'is_authenticated', False):
+            self._track(request, user)
+
+        return response
+
+    def _track(self, request, user):
+        from .models import ModuleUsageLog, UserSession
+
+        now = timezone.now()
+        facility = getattr(user, 'facility', None)
+
+        if not user.last_active or now - user.last_active >= self.WRITE_THROTTLE:
+            type(user).objects.filter(pk=user.pk).update(last_active=now)
+
+        session = UserSession.objects.filter(user=user, ended_at__isnull=True).order_by('-last_active_at').first()
+        if session and now - session.last_active_at <= self.IDLE_TIMEOUT:
+            if now - session.last_active_at >= self.WRITE_THROTTLE:
+                session.last_active_at = now
+                session.save(update_fields=['last_active_at'])
+        else:
+            if session:
+                session.ended_at = session.last_active_at
+                session.save(update_fields=['ended_at'])
+            UserSession.objects.create(user=user, facility=facility, started_at=now, last_active_at=now)
+
+        module = self._resolve_module(request.path)
+        if module:
+            ModuleUsageLog.objects.create(user=user, facility=facility, module=module)
+
+    def _resolve_module(self, path):
+        for prefix, module in self.MODULE_PATH_MAP:
+            if path.startswith(prefix):
+                return module
+        return None

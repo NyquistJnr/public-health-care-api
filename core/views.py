@@ -18,10 +18,11 @@ from .serializers import (
     StateAdminUserInviteSerializer,
     UserProfileSerializer
 )
-from .models import User
+from .models import User, LoginEvent
 from django.http import JsonResponse
 from rest_framework.permissions import IsAuthenticated
 from core.tasks import dispatch_auth_email
+from core.audit_context import get_client_ip
 from django.db import connection
 from django.conf import settings
 
@@ -32,6 +33,19 @@ from django.conf import settings
 )
 class CustomLoginView(TokenObtainPairView):
     serializer_class = EmailTokenObtainPairSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = serializer.user
+        LoginEvent.objects.create(
+            user=user,
+            facility=user.facility,
+            ip_address=get_client_ip(request),
+        )
+
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
 
 @extend_schema(
     tags=["Authentication"],

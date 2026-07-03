@@ -152,6 +152,7 @@ class User(AbstractUser):
     created_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     updated_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     deleted_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    last_active = models.DateTimeField(null=True, blank=True, db_index=True, help_text="Last time this user made an authenticated request.")
 
     def save(self, *args, **kwargs):
         if not self.staff_id and self.role != 'PATIENT':
@@ -339,3 +340,60 @@ class PatientProfile(BaseModel):
 
     def __str__(self):
         return f"{self.patient_id} - {self.user.first_name} {self.user.last_name}"
+
+
+class LoginEvent(models.Model):
+    """One row per successful login. Drives 'Total logins' and login-trend stats."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='login_events')
+    facility = models.ForeignKey('facilities.Facility', on_delete=models.SET_NULL, null=True, blank=True, related_name='login_events')
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"{self.user} logged in at {self.timestamp}"
+
+
+class UserSession(models.Model):
+    """
+    Idle-timeout session tracking. A session stays open as long as the user's
+    authenticated requests keep arriving within ActivityTrackingMiddleware.IDLE_TIMEOUT
+    of each other; otherwise it is closed and a new one is opened on the next request.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sessions')
+    facility = models.ForeignKey('facilities.Facility', on_delete=models.SET_NULL, null=True, blank=True)
+    started_at = models.DateTimeField(db_index=True)
+    last_active_at = models.DateTimeField(db_index=True)
+    ended_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    class Meta:
+        ordering = ['-started_at']
+
+    def __str__(self):
+        return f"{self.user} session {self.started_at} - {self.ended_at or 'open'}"
+
+
+class ModuleUsageLog(models.Model):
+    """One row per matched request. Drives 'Module Usage', 'Top Active Facilities', and the facility usage table."""
+    MODULE_CHOICES = (
+        ('PATIENT_RECORDS', 'Patient Records'),
+        ('PATIENT_REGISTRY', 'Patient Registry'),
+        ('PHARMACY', 'Pharmacy'),
+        ('LAB', 'Lab'),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='module_usage_logs')
+    facility = models.ForeignKey('facilities.Facility', on_delete=models.SET_NULL, null=True, blank=True, related_name='usage_logs')
+    module = models.CharField(max_length=20, choices=MODULE_CHOICES, db_index=True)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"{self.user} used {self.module} at {self.timestamp}"

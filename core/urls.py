@@ -12,6 +12,10 @@ from .view_facility import (
 from .view_audit_log import (
     AuditLogListView, NotificationListView, NotificationMarkReadView
 )
+from .view_stats import (
+    DashboardStatsView, UserActivityTrendView, ModuleUsageStatsView,
+    TopActiveFacilitiesView, FacilityUsageTableView
+)
 
 from .view_qstash_webhook import QStashWebhookView
 
@@ -46,4 +50,12 @@ system_patterns = [
     path('qstash-webhook/', QStashWebhookView.as_view(), name='qstash_webhook'),
 ]
 
-urlpatterns = auth_patterns + user_management_patterns + patient_patterns + system_patterns
+stats_patterns = [
+    path('overview/', DashboardStatsView.as_view(), name='stats_overview'),
+    path('user-activity-trend/', UserActivityTrendView.as_view(), name='stats_user_activity_trend'),
+    path('module-usage/', ModuleUsageStatsView.as_view(), name='stats_module_usage'),
+    path('top-active-facilities/', TopActiveFacilitiesView.as_view(), name='stats_top_active_facilities'),
+    path('facility-usage-table/', FacilityUsageTableView.as_view(), name='stats_facility_usage_table'),
+]
+
+urlpatterns = auth_patterns + user_management_patterns + patient_patterns + system_patterns + stats_patterns
