@@ -56,10 +56,11 @@ class AdverseEventWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = AdverseEvent
         fields = [
-            'patient', 'reported_by', 'suspected_drug', 'dosage',
+            'id', 'event_id', 'patient', 'reported_by', 'suspected_drug', 'dosage',
             'date_of_reaction', 'stop_date', 'reaction_type', 'severity',
             'detailed_symptoms', 'status'
         ]
+        read_only_fields = ['id', 'event_id']
         extra_kwargs = {'status': {'required': False}}
 
     def validate_reported_by(self, value):

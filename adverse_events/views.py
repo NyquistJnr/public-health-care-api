@@ -1,5 +1,6 @@
 # adverse_events/views.py
-from rest_framework import viewsets
+from rest_framework import viewsets, status
+from rest_framework.response import Response
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 from .models import AdverseEvent
@@ -77,3 +78,12 @@ class AdverseEventViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         serializer.save(updated_by=self.request.user)
+
+    def perform_destroy(self, instance):
+        instance.delete(deleted_by=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance_id, event_id = instance.id, instance.event_id
+        self.perform_destroy(instance)
+        return Response({"id": instance_id, "event_id": event_id}, status=status.HTTP_200_OK)
