@@ -73,6 +73,8 @@ INSTALLED_APPS = list(SHARED_APPS) + [app for app in TENANT_APPS if app not in S
 TENANT_MODEL = "tenants.State"
 TENANT_DOMAIN_MODEL = "tenants.Domain"
 
+SHOW_PUBLIC_IF_NO_TENANT_FOUND = True
+
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django_tenants.middleware.main.TenantMainMiddleware',
