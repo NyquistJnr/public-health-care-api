@@ -9,6 +9,25 @@ from django.core.mail import send_mail
 from core.models import User
 from .models import Facility
 
+
+class StateFacilityStatsSerializer(serializers.Serializer):
+    total_facilities = serializers.IntegerField()
+    active_facilities = serializers.IntegerField()
+    suspended_facilities = serializers.IntegerField()
+    total_registered_patients = serializers.IntegerField()
+
+
+class PatientActivityDaySerializer(serializers.Serializer):
+    date = serializers.DateField()
+    registered = serializers.IntegerField(help_text="Patients registered on this day")
+    appointments = serializers.IntegerField(help_text="Distinct patients with an appointment booked on this day")
+
+
+class PatientActivityChartSerializer(serializers.Serializer):
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    results = PatientActivityDaySerializer(many=True)
+
 class FacilitySerializer(serializers.ModelSerializer):
     state = serializers.SerializerMethodField()
     manager_name = serializers.SerializerMethodField()

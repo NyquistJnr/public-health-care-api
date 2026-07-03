@@ -1,15 +1,23 @@
 # facilities/views.py
+from datetime import timedelta
 from rest_framework import viewsets
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from django.db.models import Q, Count
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 from rest_framework import status
 from django.db import connection
 
+from core.models import User
+from core.permissions import IsStateAdmin
+from appointments.models import Appointment
 from .models import Facility
-from .serializers import FacilitySerializer
+from .serializers import (
+    FacilitySerializer, StateFacilityStatsSerializer, PatientActivityChartSerializer
+)
 from core.serializers import StatusUpdateSerializer, EmptyStatsSerializer
 
 
@@ -115,14 +123,98 @@ class FacilityStatusToggleView(APIView):
         except Facility.DoesNotExist:
             return Response({"detail": "Facility not found."}, status=status.HTTP_404_NOT_FOUND)
 
-@extend_schema(tags=["Facility Management"], summary="Get State-Wide Facility Statistics")
+@extend_schema(
+    tags=["Facility Management"],
+    summary="Get State-Wide Facility Statistics (State Admin Only)",
+    parameters=[
+        OpenApiParameter(name='start_date', description='Filter from date (YYYY-MM-DD)', required=False, type=str),
+        OpenApiParameter(name='end_date', description='Filter to date (YYYY-MM-DD)', required=False, type=str),
+    ],
+    responses=StateFacilityStatsSerializer
+)
 class StateFacilityStatsView(APIView):
-    # permission_classes = [HasRequiredPermission]
-    serializer_class = EmptyStatsSerializer
+    permission_classes = [IsStateAdmin]
+    serializer_class = StateFacilityStatsSerializer
 
     def get(self, request):
+        facility_qs = Facility.objects.all()
+        patient_qs = User.objects.filter(role='PATIENT')
+
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+
+        if start_date:
+            facility_qs = facility_qs.filter(created_at__gte=start_date)
+            patient_qs = patient_qs.filter(created_at__gte=start_date)
+        if end_date:
+            facility_qs = facility_qs.filter(created_at__lte=end_date)
+            patient_qs = patient_qs.filter(created_at__lte=end_date)
+
         return Response({
-            "total_facilities": Facility.objects.count(),
-            "active_facilities": Facility.objects.filter(is_active=True).count(),
-            "suspended_facilities": Facility.objects.filter(is_active=False).count()
+            "total_facilities": facility_qs.count(),
+            "active_facilities": facility_qs.filter(is_active=True).count(),
+            "suspended_facilities": facility_qs.filter(is_active=False).count(),
+            "total_registered_patients": patient_qs.count()
+        })
+
+
+@extend_schema(
+    tags=["Facility Management"],
+    summary="Get Daily Patient Registration vs Appointment Activity (State-Wide)",
+    description=(
+        "Returns a day-by-day breakdown of patients registered vs distinct patients who had an "
+        "appointment booked, for the given range - intended for a grouped bar chart. Defaults to "
+        "the last 30 days if no range is given. Range is capped at 366 days."
+    ),
+    parameters=[
+        OpenApiParameter(name='start_date', description='Start date (YYYY-MM-DD). Defaults to 30 days ago.', required=False, type=str),
+        OpenApiParameter(name='end_date', description='End date (YYYY-MM-DD). Defaults to today.', required=False, type=str),
+    ],
+    responses=PatientActivityChartSerializer
+)
+class PatientActivityChartView(APIView):
+    def get(self, request):
+        today = timezone.now().date()
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+
+        try:
+            end_date = timezone.datetime.strptime(end_date, '%Y-%m-%d').date() if end_date else today
+            start_date = timezone.datetime.strptime(start_date, '%Y-%m-%d').date() if start_date else end_date - timedelta(days=30)
+        except ValueError:
+            raise ValidationError({"detail": "start_date/end_date must be in YYYY-MM-DD format."})
+
+        if start_date > end_date:
+            raise ValidationError({"detail": "start_date must not be after end_date."})
+        if (end_date - start_date).days > 366:
+            raise ValidationError({"detail": "Range cannot exceed 366 days."})
+
+        registered_by_day = {
+            row['day']: row['count']
+            for row in User.objects.filter(
+                role='PATIENT', created_at__date__range=[start_date, end_date]
+            ).annotate(day=TruncDate('created_at')).values('day').annotate(count=Count('id')).order_by('day')
+        }
+
+        appointments_by_day = {
+            row['day']: row['count']
+            for row in Appointment.objects.filter(
+                created_at__date__range=[start_date, end_date]
+            ).annotate(day=TruncDate('created_at')).values('day').annotate(count=Count('patient', distinct=True)).order_by('day')
+        }
+
+        results = []
+        current_day = start_date
+        while current_day <= end_date:
+            results.append({
+                "date": current_day,
+                "registered": registered_by_day.get(current_day, 0),
+                "appointments": appointments_by_day.get(current_day, 0)
+            })
+            current_day += timedelta(days=1)
+
+        return Response({
+            "start_date": start_date,
+            "end_date": end_date,
+            "results": results
         })

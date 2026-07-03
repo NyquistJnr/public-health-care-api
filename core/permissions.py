@@ -19,5 +19,13 @@ class HasRequiredPermission(permissions.BasePermission):
         for perm in required_perms:
             if not request.user.has_perm(perm):
                 return False
-                
+
         return True
+
+
+class IsStateAdmin(permissions.BasePermission):
+    """Restricts access to State Admins (role='ADMIN') or Django superusers."""
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(user and user.is_authenticated and (user.is_superuser or user.role == 'ADMIN'))
