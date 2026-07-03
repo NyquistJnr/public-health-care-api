@@ -10,7 +10,7 @@ class Consultation(BaseModel):
     patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='consultation_records', limit_choices_to={'role': 'PATIENT'})
     doctor = models.ForeignKey(User, on_delete=models.PROTECT, related_name='conducted_consultations')
     chief_complaint = models.TextField()
-    presenting_complaint = models.TextField()
+    presenting_complaint = models.TextField(blank=True, null=True)
     history_of_present_complaint = models.TextField(blank=True, null=True)
     past_medical_history = models.TextField(blank=True, null=True)
     examination_findings = models.TextField(blank=True, null=True)

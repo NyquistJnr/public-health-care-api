@@ -20,7 +20,7 @@ class ConsultationReadSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'consultation_id', 'appointment', 'patient', 'patient_display_id',
             'patient_name', 'patient_age', 'patient_gender', 'doctor', 'doctor_name',
-            'chief_complaint', 'presenting_complaint', 'history_of_present_complaint',
+            'chief_complaint', 'history_of_present_complaint',
             'past_medical_history', 'examination_findings', 'primary_diagnosis',
             'secondary_diagnosis', 'diagnosed_disease', 'treatment_plan', 'additional_notes',
             'vitals', 'created_at'
@@ -59,7 +59,7 @@ class ConsultationCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Consultation
         fields = [
-            'appointment', 'chief_complaint', 'presenting_complaint',
+            'appointment', 'chief_complaint',
             'history_of_present_complaint', 'past_medical_history',
             'examination_findings', 'primary_diagnosis', 'secondary_diagnosis',
             'diagnosed_disease', 'treatment_plan', 'additional_notes'
