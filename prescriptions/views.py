@@ -5,6 +5,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 from django.db.models.functions import Coalesce
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from django.db.models import Sum, Q, F, Case, When, FloatField
@@ -101,10 +102,10 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
             try:
                 dispense_fifo_stock(item.inventory_item, item.quantity, request.user)
             except InsufficientStockError as e:
-                return Response(
-                    {"detail": f"Insufficient stock for '{item.get_medication_name()}': {e}"},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                # Raise (rather than return a Response) so the exception propagates out of
+                # this @transaction.atomic block and rolls back any deductions already made
+                # for earlier items in this loop - dispensing must be all-or-nothing.
+                raise ValidationError({"detail": f"Insufficient stock for '{item.get_medication_name()}': {e}"})
 
         prescription.status = 'DISPENSED'
         prescription.save(update_fields=['status', 'updated_at'])
