@@ -129,6 +129,7 @@ class User(AbstractUser):
         ('LAB_TECHNICIAN', 'Laboratory Technician'),
         ('NURSE', 'Nurse'),
         ('CHEW', 'Community Health Extension Worker'),
+        ('IHO', 'Information Health Officer (Records Officer)'),
         ('PATIENT', 'Patient'),
     )
     

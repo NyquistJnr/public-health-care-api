@@ -48,9 +48,15 @@ class Command(BaseCommand):
                 'add_anc_visit', 'add_pnc_visit'
             ],
             'CHEW': [
-                'view_facility', 'view_patient_profile', 
-                'view_appointment', 'add_vitals', 
+                'view_facility', 'view_patient_profile',
+                'view_appointment', 'add_vitals',
                 'add_immunization', 'view_immunization'
+            ],
+            'IHO': [
+                'view_facility',
+                'add_patient_profile', 'view_patient_profile', 'view_patient_history',
+                'add_appointment', 'view_appointment', 'change_appointment_status',
+                'assign_appointment_staff'
             ],
             'PATIENT': [
                 'view_own_record', 'view_own_prescription', 'add_own_appointment', 'cancel_own_appointment'

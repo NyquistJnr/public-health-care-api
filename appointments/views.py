@@ -7,7 +7,10 @@ from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiPara
 from rest_framework.exceptions import ValidationError
 from django.db.models import Q
 from .models import Appointment, Vitals
-from .serializers import AppointmentReadSerializer, AppointmentWriteSerializer, AppointmentStatusUpdateSerializer, VitalsSerializer
+from .serializers import (
+    AppointmentReadSerializer, AppointmentWriteSerializer, AppointmentStatusUpdateSerializer,
+    AppointmentAssignSerializer, VitalsSerializer
+)
 
 @extend_schema_view(
     list=extend_schema(tags=["Appointments"], summary="List all facility appointments"),
@@ -98,7 +101,39 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             "detail": f"Appointment status updated to {new_status}.",
             "status": new_status
         }, status=drf_status.HTTP_200_OK)
-    
+
+    @extend_schema(
+        tags=["Appointments"],
+        summary="Assign HCP After Vitals (Nurse Handoff)",
+        description=(
+            "Hands an appointment off to a Doctor/Nurse once vitals are done. Only valid on "
+            "appointments currently in VITALS_DONE status; on success, moves status to IN_CONSULTATION."
+        ),
+        request=AppointmentAssignSerializer,
+    )
+    @action(detail=True, methods=['post'])
+    def assign(self, request, pk=None):
+        appointment = self.get_object()
+
+        if appointment.status != 'VITALS_DONE':
+            raise ValidationError({
+                "detail": "Vitals must be completed before a Doctor/Nurse can be assigned to this appointment."
+            })
+
+        serializer = AppointmentAssignSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        staff = serializer.validated_data['assigned_to']
+
+        if staff.facility_id != appointment.facility_id:
+            raise ValidationError({"assigned_to": "This staff member does not belong to the appointment's facility."})
+
+        appointment.assigned_to = staff
+        appointment.status = 'IN_CONSULTATION'
+        appointment.updated_by = request.user
+        appointment.save(update_fields=['assigned_to', 'status', 'updated_at', 'updated_by'])
+
+        return Response(AppointmentReadSerializer(appointment).data, status=drf_status.HTTP_200_OK)
+
     @extend_schema(
         tags=["Appointments"], 
         summary="Get My Assigned Appointments (Staff Dashboard)",

@@ -245,6 +245,13 @@ class AppointmentStatusUpdateSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=Appointment.STATUS_CHOICES)
 
 
+class AppointmentAssignSerializer(serializers.Serializer):
+    assigned_to = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(role__in=['DOCTOR', 'NURSE']),
+        help_text="UUID of the Doctor/Nurse to hand this appointment off to after vitals."
+    )
+
+
 #### Vitals Serializers ####
 
 class VitalsSerializer(serializers.ModelSerializer):
