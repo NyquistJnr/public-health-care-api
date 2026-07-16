@@ -261,21 +261,30 @@ class ReferralViewSet(viewsets.ModelViewSet):
         patient_name = patient.get_full_name() or "Patient"
         patient_email = patient.email
 
-        participants = [
-            {"role": "doctor", "name": host_name, "email": host_email, "is_host": True},
-            {"role": "patient", "name": patient_name, "email": patient_email, "is_host": False}
-        ]
+        participants = []
+        
+        doctor_participant = {"role": "doctor", "name": host_name, "is_host": True}
+        if host_email:
+            doctor_participant["email"] = host_email
+        participants.append(doctor_participant)
+
+        patient_participant = {"role": "patient", "name": patient_name, "is_host": False}
+        if patient_email:
+            patient_participant["email"] = patient_email
+        participants.append(patient_participant)
 
         additional_participants = request.data.get('additional_participants')
         if isinstance(additional_participants, list):
             for ap in additional_participants:
-                if isinstance(ap, dict) and 'name' in ap and 'email' in ap:
-                    participants.append({
+                if isinstance(ap, dict) and 'name' in ap:
+                    p_dict = {
                         "role": ap.get('role', 'guest'),
                         "name": ap['name'],
-                        "email": ap['email'],
                         "is_host": ap.get('is_host', False)
-                    })
+                    }
+                    if ap.get('email'):
+                        p_dict['email'] = ap['email']
+                    participants.append(p_dict)
 
         profile = getattr(patient, 'patient_profile', None)
         allergies = profile.allergies.split(',') if profile and profile.allergies else []
@@ -301,10 +310,10 @@ class ReferralViewSet(viewsets.ModelViewSet):
         if vitals and vitals._has_measurements():
             medical_data["latest_vitals"] = {
                 "blood_pressure": vitals.blood_pressure,
-                "temperature_c": vitals.temperature,
+                "temperature_c": float(vitals.temperature) if vitals.temperature is not None else None,
                 "pulse_bpm": vitals.pulse_rate,
                 "spo2_percent": vitals.spo2,
-                "weight_kg": vitals.weight_kg,
+                "weight_kg": float(vitals.weight_kg) if vitals.weight_kg is not None else None,
             }
 
         # Merge custom medical data if provided by the frontend
@@ -321,6 +330,8 @@ class ReferralViewSet(viewsets.ModelViewSet):
                 participants=participants,
                 medical_data=medical_data
             )
+        except httpx.HTTPStatusError as e:
+            return Response({"detail": f"Telemedicine API rejected the payload: {e.response.text}"}, status=status.HTTP_502_BAD_GATEWAY)
         except httpx.HTTPError as e:
             return Response({"detail": f"Failed to communicate with Telemedicine API: {str(e)}"}, status=status.HTTP_502_BAD_GATEWAY)
 
