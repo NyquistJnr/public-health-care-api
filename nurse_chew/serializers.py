@@ -3,6 +3,7 @@ from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
 from django.utils import timezone
 from immunization.models import ImmunizationRecord
+from .models import HealthPromotion, PostActivity
 
 class NurseStatsResponseSerializer(serializers.Serializer):
     waiting_in_queue = serializers.IntegerField(help_text="Patients physically arrived or scheduled for today")
@@ -76,3 +77,110 @@ class ImmunizationDueItemSerializer(serializers.ModelSerializer):
             return f"In {delta} days"
         else:
             return obj.next_due_date.strftime('%B %d, %Y')
+
+class HealthPromotionSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField(read_only=True)
+    assigned_to_names = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = HealthPromotion
+        fields = '__all__'
+        read_only_fields = ('promotion_id', 'sequence_number', 'created_at', 'updated_at', 'created_by')
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip()
+        return None
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_assigned_to_names(self, obj):
+        return [{"id": str(u.id), "name": f"{u.first_name} {u.last_name}".strip()} for u in obj.assigned_to.all()]
+
+    def validate(self, data):
+        status = data.get('status', self.instance.status if self.instance else 'DRAFT')
+        if status != 'DRAFT':
+            required_fields = ['title', 'type', 'location', 'target_audience', 'expected_participants', 'start_date', 'end_date', 'description']
+            errors = {}
+            for field in required_fields:
+                val = data.get(field, getattr(self.instance, field, None) if self.instance else None)
+                if val is None or val == '':
+                    errors[field] = "This field is required when not in DRAFT status."
+            if errors:
+                raise serializers.ValidationError(errors)
+
+        st = data.get('start_date', getattr(self.instance, 'start_date', None) if self.instance else None)
+        en = data.get('end_date', getattr(self.instance, 'end_date', None) if self.instance else None)
+        if st and en and st > en:
+            raise serializers.ValidationError({"end_date": "End date must occur after start date."})
+        return data
+
+class PostActivitySerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = PostActivity
+        fields = '__all__'
+        read_only_fields = ('created_at', 'updated_at', 'created_by')
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return f"{obj.created_by.first_name} {obj.created_by.last_name}".strip()
+        return None
+
+    def validate(self, data):
+        status = data.get('status', self.instance.status if self.instance else 'DRAFT')
+        if status != 'DRAFT':
+            required_fields = ['number_of_participants', 'male_count', 'female_count', 'key_messages_delivered', 'outcome_summary', 'challenges']
+            errors = {}
+            for field in required_fields:
+                val = data.get(field, getattr(self.instance, field, None) if self.instance else None)
+                if val is None or val == '':
+                    errors[field] = "This field is required when not in DRAFT status."
+            if errors:
+                raise serializers.ValidationError(errors)
+
+        # Allow partial updates
+        number_of_participants = data.get('number_of_participants', getattr(self.instance, 'number_of_participants', None) if self.instance else None)
+        male_count = data.get('male_count', getattr(self.instance, 'male_count', None) if self.instance else None)
+        female_count = data.get('female_count', getattr(self.instance, 'female_count', None) if self.instance else None)
+        
+        if number_of_participants is not None and male_count is not None and female_count is not None:
+            if number_of_participants != male_count + female_count:
+                raise serializers.ValidationError({
+                    "number_of_participants": "Total participants must equal the sum of male and female counts."
+                })
+        return data
+
+class ChewStatsResponseSerializer(serializers.Serializer):
+    new_registrations = serializers.IntegerField()
+    community_visits = serializers.IntegerField()
+    maternal_follow_ups = serializers.IntegerField()
+    health_promotions = serializers.IntegerField()
+
+class HealthPromotionTodaySerializer(serializers.ModelSerializer):
+    assigned_staffs = serializers.SerializerMethodField()
+    date_and_time = serializers.DateTimeField(source='start_date')
+
+    class Meta:
+        model = HealthPromotion
+        fields = ('title', 'type', 'date_and_time', 'assigned_staffs')
+
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
+    def get_assigned_staffs(self, obj):
+        return [f"{u.first_name} {u.last_name}" for u in obj.assigned_to.all()]
+
+class ChewActivityReportStatsSerializer(serializers.Serializer):
+    total_activities = serializers.IntegerField()
+    patients_reached = serializers.IntegerField()
+    maternal_follow_ups = serializers.IntegerField()
+    community_visits = serializers.IntegerField()
+
+class ActivityReportItemSerializer(serializers.Serializer):
+    id = serializers.CharField()
+    activity_type = serializers.CharField()
+    description = serializers.CharField()
+    date = serializers.DateTimeField()
+    performed_by = serializers.CharField()
+    status = serializers.CharField()

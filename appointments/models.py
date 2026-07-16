@@ -13,6 +13,7 @@ class Appointment(BaseModel):
         ('POSTNATAL', 'Postnatal Care'),
         ('IMMUNIZATION', 'Immunization'),
         ('EMERGENCY', 'Emergency'),
+        ('COMMUNITY', 'Community Visit'),
         ('OTHER', 'Other')
     )
 

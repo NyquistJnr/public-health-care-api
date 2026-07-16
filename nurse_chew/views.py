@@ -2,7 +2,7 @@
 from datetime import timedelta
 from django.utils import timezone
 from rest_framework.views import APIView
-from rest_framework import generics
+from rest_framework import generics, viewsets
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from django.db.models import Q
@@ -14,14 +14,24 @@ from immunization.models import ImmunizationRecord
 from laboratory.models import LabRequest
 from prescriptions.models import Prescription
 from referrals.models import Referral
+from django.db.models import Count, Q, Value, CharField, F
+from django.db.models.functions import Concat, Cast
+from core.models import User
 from appointments.serializers import AppointmentReadSerializer
 from laboratory.serializers import LabRequestReadSerializer
 from prescriptions.serializers import PrescriptionReadSerializer
 from referrals.serializers import ReferralReadSerializer
+from .models import HealthPromotion, PostActivity
 from .serializers import (
     NurseStatsResponseSerializer,
     PaginatedMaternalAlertsSerializer,
-    ImmunizationDueItemSerializer
+    ImmunizationDueItemSerializer,
+    HealthPromotionSerializer,
+    PostActivitySerializer,
+    ChewStatsResponseSerializer,
+    HealthPromotionTodaySerializer,
+    ChewActivityReportStatsSerializer,
+    ActivityReportItemSerializer
 )
 
 @extend_schema(
@@ -322,3 +332,315 @@ class ImmunizationsDueView(generics.ListAPIView):
             )
 
         return qs.order_by('next_due_date')
+
+@extend_schema(
+    tags=["Health Promotion"],
+    parameters=[
+        OpenApiParameter(name='search', description='Search by ID, Promotion ID, or Title', required=False, type=str),
+        OpenApiParameter(name='type', description='Filter by Activity Type', required=False, type=str),
+    ]
+)
+class HealthPromotionViewSet(viewsets.ModelViewSet):
+    queryset = HealthPromotion.objects.all()
+    serializer_class = HealthPromotionSerializer
+    
+    def get_queryset(self):
+        qs = super().get_queryset()
+        
+        search = self.request.query_params.get('search')
+        act_type = self.request.query_params.get('type')
+        
+        if search:
+            qs = qs.filter(
+                Q(id__icontains=search) |
+                Q(promotion_id__icontains=search) |
+                Q(title__icontains=search)
+            )
+        if act_type:
+            qs = qs.filter(type__iexact=act_type)
+            
+        return qs.order_by('-created_at')
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+@extend_schema(
+    tags=["Health Promotion"],
+    parameters=[
+        OpenApiParameter(name='search', description='Search by ID, Promotion ID, or Title', required=False, type=str),
+        OpenApiParameter(name='type', description='Filter by Activity Type', required=False, type=str),
+    ]
+)
+class PostActivityViewSet(viewsets.ModelViewSet):
+    queryset = PostActivity.objects.all()
+    serializer_class = PostActivitySerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        
+        search = self.request.query_params.get('search')
+        act_type = self.request.query_params.get('type')
+        
+        if search:
+            qs = qs.filter(
+                Q(id__icontains=search) |
+                Q(health_promotion__promotion_id__icontains=search) |
+                Q(health_promotion__title__icontains=search)
+            )
+        if act_type:
+            qs = qs.filter(health_promotion__type__iexact=act_type)
+            
+        return qs.order_by('-created_at')
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+@extend_schema(
+    tags=["CHEW Reporting"],
+    summary="Get CHEW Stats (New Registrations, Community Visits, Maternal Follow ups, Health Promotion)",
+    parameters=[
+        OpenApiParameter(name='start_date', description='Filter from date (YYYY-MM-DD)', required=False, type=str),
+        OpenApiParameter(name='end_date', description='Filter to date (YYYY-MM-DD)', required=False, type=str),
+    ]
+)
+class ChewStatsView(APIView):
+    def get(self, request):
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+
+        users_qs = User.objects.filter(role='PATIENT', created_by__role='CHEW', created_by__facility=request.user.facility)
+        visits_qs = Appointment.objects.filter(visit_type='COMMUNITY', assigned_to__role='CHEW', facility=request.user.facility)
+        anc_qs = ANCVisit.objects.filter(created_by__role='CHEW', appointment__facility=request.user.facility)
+        pnc_qs = PNCVisit.objects.filter(created_by__role='CHEW', appointment__facility=request.user.facility)
+        hp_qs = HealthPromotion.objects.filter(created_by__role='CHEW')
+
+        if start_date:
+            users_qs = users_qs.filter(created_at__date__gte=start_date)
+            visits_qs = visits_qs.filter(created_at__date__gte=start_date)
+            anc_qs = anc_qs.filter(created_at__date__gte=start_date)
+            pnc_qs = pnc_qs.filter(created_at__date__gte=start_date)
+            hp_qs = hp_qs.filter(created_at__date__gte=start_date)
+        if end_date:
+            users_qs = users_qs.filter(created_at__date__lte=end_date)
+            visits_qs = visits_qs.filter(created_at__date__lte=end_date)
+            anc_qs = anc_qs.filter(created_at__date__lte=end_date)
+            pnc_qs = pnc_qs.filter(created_at__date__lte=end_date)
+            hp_qs = hp_qs.filter(created_at__date__lte=end_date)
+
+        data = {
+            "new_registrations": users_qs.count(),
+            "community_visits": visits_qs.count(),
+            "maternal_follow_ups": anc_qs.count() + pnc_qs.count(),
+            "health_promotions": hp_qs.count()
+        }
+        return Response(data)
+
+@extend_schema(
+    tags=["CHEW Reporting"],
+    summary="Get Health Promotions scheduled for today"
+)
+class HealthPromotionsTodayView(generics.ListAPIView):
+    serializer_class = HealthPromotionTodaySerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        today = timezone.now().date()
+        return HealthPromotion.objects.filter(start_date__date=today).order_by('start_date')
+
+
+@extend_schema(
+    tags=["CHEW Reporting"],
+    summary="Get CHEW Activity Report Stats",
+    parameters=[
+        OpenApiParameter(name='start_date', description='Filter from date (YYYY-MM-DD)', required=False, type=str),
+        OpenApiParameter(name='end_date', description='Filter to date (YYYY-MM-DD)', required=False, type=str),
+    ]
+)
+class ChewActivityReportStatsView(APIView):
+    def get(self, request):
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+
+        users_qs = User.objects.filter(role='PATIENT', created_by__role='CHEW', created_by__facility=request.user.facility)
+        appt_qs = Appointment.objects.filter(assigned_to__role='CHEW', facility=request.user.facility)
+        anc_qs = ANCVisit.objects.filter(created_by__role='CHEW', appointment__facility=request.user.facility)
+        pnc_qs = PNCVisit.objects.filter(created_by__role='CHEW', appointment__facility=request.user.facility)
+        community_qs = appt_qs.filter(visit_type='COMMUNITY')
+        hp_qs = HealthPromotion.objects.filter(created_by__role='CHEW')
+        pa_qs = PostActivity.objects.filter(created_by__role='CHEW')
+
+        if start_date:
+            users_qs = users_qs.filter(created_at__date__gte=start_date)
+            appt_qs = appt_qs.filter(created_at__date__gte=start_date)
+            anc_qs = anc_qs.filter(created_at__date__gte=start_date)
+            pnc_qs = pnc_qs.filter(created_at__date__gte=start_date)
+            community_qs = community_qs.filter(created_at__date__gte=start_date)
+            hp_qs = hp_qs.filter(created_at__date__gte=start_date)
+            pa_qs = pa_qs.filter(created_at__date__gte=start_date)
+            
+        if end_date:
+            users_qs = users_qs.filter(created_at__date__lte=end_date)
+            appt_qs = appt_qs.filter(created_at__date__lte=end_date)
+            anc_qs = anc_qs.filter(created_at__date__lte=end_date)
+            pnc_qs = pnc_qs.filter(created_at__date__lte=end_date)
+            community_qs = community_qs.filter(created_at__date__lte=end_date)
+            hp_qs = hp_qs.filter(created_at__date__lte=end_date)
+            pa_qs = pa_qs.filter(created_at__date__lte=end_date)
+
+        maternal_count = anc_qs.count() + pnc_qs.count()
+        community_count = community_qs.count()
+
+        patients_registered = set(users_qs.values_list('id', flat=True))
+        patients_seen = set(appt_qs.values_list('patient_id', flat=True))
+        patients_reached = len(patients_registered.union(patients_seen))
+
+        total_activities = (
+            users_qs.count() +
+            appt_qs.count() +
+            maternal_count +
+            hp_qs.count() +
+            pa_qs.count()
+        )
+
+        data = {
+            "total_activities": total_activities,
+            "patients_reached": patients_reached,
+            "maternal_follow_ups": maternal_count,
+            "community_visits": community_count
+        }
+        return Response(data)
+
+
+@extend_schema(
+    tags=["CHEW Reporting"],
+    summary="Get Entire Activity Report List (Paginated)",
+    parameters=[
+        OpenApiParameter(name='start_date', description='Filter from date (YYYY-MM-DD)', required=False, type=str),
+        OpenApiParameter(name='end_date', description='Filter to date (YYYY-MM-DD)', required=False, type=str),
+        OpenApiParameter(name='search', description='Search across items', required=False, type=str),
+        OpenApiParameter(name='activity_type', description='Enum: Patient Registration, Maternal Follow ups, Appointment, Health Promotion, Health Promotion Post Activity', required=False, type=str),
+    ]
+)
+class ActivityReportListView(generics.ListAPIView):
+    serializer_class = ActivityReportItemSerializer
+
+    def get_queryset(self):
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        search = self.request.query_params.get('search')
+        activity_type = self.request.query_params.get('activity_type')
+        facility = self.request.user.facility
+
+        q1 = User.objects.filter(role='PATIENT', created_by__isnull=False, created_by__facility=facility).annotate(
+            item_id=Cast('id', CharField(max_length=255)),
+            activity_type=Value('Patient Registration', CharField(max_length=255)),
+            desc_val=Cast('email', CharField(max_length=255)),
+            date=F('created_at'),
+            performed_by=Concat('created_by__first_name', Value(' '), 'created_by__last_name', output_field=CharField(max_length=255)),
+            status_val=Value('COMPLETED', CharField(max_length=255))
+        ).values('item_id', 'activity_type', 'desc_val', 'date', 'performed_by', 'status_val')
+
+        q2 = ANCVisit.objects.filter(appointment__facility=facility).annotate(
+            item_id=Cast('id', CharField(max_length=255)),
+            activity_type=Value('Maternal Follow ups', CharField(max_length=255)),
+            desc_val=Cast('appointment__appointment_id', CharField(max_length=255)),
+            date=F('created_at'),
+            performed_by=Concat('created_by__first_name', Value(' '), 'created_by__last_name', output_field=CharField(max_length=255)),
+            status_val=Value('COMPLETED', CharField(max_length=255))
+        ).values('item_id', 'activity_type', 'desc_val', 'date', 'performed_by', 'status_val')
+
+        q3 = PNCVisit.objects.filter(appointment__facility=facility).annotate(
+            item_id=Cast('id', CharField(max_length=255)),
+            activity_type=Value('Maternal Follow ups', CharField(max_length=255)),
+            desc_val=Cast('appointment__appointment_id', CharField(max_length=255)),
+            date=F('created_at'),
+            performed_by=Concat('created_by__first_name', Value(' '), 'created_by__last_name', output_field=CharField(max_length=255)),
+            status_val=Value('COMPLETED', CharField(max_length=255))
+        ).values('item_id', 'activity_type', 'desc_val', 'date', 'performed_by', 'status_val')
+
+        q4 = Appointment.objects.filter(facility=facility).annotate(
+            item_id=Cast('id', CharField(max_length=255)),
+            activity_type=Value('Appointment', CharField(max_length=255)),
+            desc_val=Cast('appointment_id', CharField(max_length=255)),
+            date=F('created_at'),
+            performed_by=Concat('created_by__first_name', Value(' '), 'created_by__last_name', output_field=CharField(max_length=255)),
+            status_val=Cast('status', CharField(max_length=255))
+        ).values('item_id', 'activity_type', 'desc_val', 'date', 'performed_by', 'status_val')
+
+        q5 = HealthPromotion.objects.annotate(
+            item_id=Cast('id', CharField(max_length=255)),
+            activity_type=Value('Health Promotion', CharField(max_length=255)),
+            desc_val=Cast('title', CharField(max_length=255)),
+            date=F('created_at'),
+            performed_by=Concat('created_by__first_name', Value(' '), 'created_by__last_name', output_field=CharField(max_length=255)),
+            status_val=Cast('status', CharField(max_length=255))
+        ).values('item_id', 'activity_type', 'desc_val', 'date', 'performed_by', 'status_val')
+
+        q6 = PostActivity.objects.annotate(
+            item_id=Cast('id', CharField(max_length=255)),
+            activity_type=Value('Health Promotion Post Activity', CharField(max_length=255)),
+            desc_val=Cast('health_promotion__title', CharField(max_length=255)),
+            date=F('created_at'),
+            performed_by=Concat('created_by__first_name', Value(' '), 'created_by__last_name', output_field=CharField(max_length=255)),
+            status_val=Cast('status', CharField(max_length=255))
+        ).values('item_id', 'activity_type', 'desc_val', 'date', 'performed_by', 'status_val')
+        
+        def apply_filters(qs, search_text, start_d, end_d, desc_field, name_prefix='created_by'):
+            if start_d:
+                qs = qs.filter(created_at__date__gte=start_d)
+            if end_d:
+                qs = qs.filter(created_at__date__lte=end_d)
+            if search_text:
+                qs = qs.filter(
+                    Q(**{f"{desc_field}__icontains": search_text}) | 
+                    Q(**{f"{name_prefix}__first_name__icontains": search_text}) |
+                    Q(**{f"{name_prefix}__last_name__icontains": search_text})
+                )
+            return qs
+
+        q1 = apply_filters(q1, search, start_date, end_date, 'email', 'created_by')
+        q2 = apply_filters(q2, search, start_date, end_date, 'appointment__appointment_id', 'created_by')
+        q3 = apply_filters(q3, search, start_date, end_date, 'appointment__appointment_id', 'created_by')
+        q4 = apply_filters(q4, search, start_date, end_date, 'appointment_id', 'created_by')
+        q5 = apply_filters(q5, search, start_date, end_date, 'title', 'created_by')
+        q6 = apply_filters(q6, search, start_date, end_date, 'health_promotion__title', 'created_by')
+
+        queries = []
+        if not activity_type or activity_type == 'Patient Registration': queries.append(q1)
+        if not activity_type or activity_type == 'Maternal Follow ups': queries.extend([q2, q3])
+        if not activity_type or activity_type == 'Appointment': queries.append(q4)
+        if not activity_type or activity_type == 'Health Promotion': queries.append(q5)
+        if not activity_type or activity_type == 'Health Promotion Post Activity': queries.append(q6)
+
+        if not queries:
+            return User.objects.none()
+
+        combined = queries[0]
+        for q in queries[1:]:
+            combined = combined.union(q)
+
+        combined = combined.order_by('-date')
+        return combined
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+
+        def map_item(item):
+            return {
+                'id': item['item_id'],
+                'activity_type': item['activity_type'],
+                'description': item['desc_val'],
+                'date': item['date'],
+                'performed_by': item['performed_by'],
+                'status': item['status_val']
+            }
+
+        if page is not None:
+            mapped_page = [map_item(x) for x in page]
+            serializer = self.get_serializer(mapped_page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        mapped_qs = [map_item(x) for x in queryset]
+        serializer = self.get_serializer(mapped_qs, many=True)
+        return Response(serializer.data)
