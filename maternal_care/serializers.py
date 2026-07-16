@@ -165,6 +165,9 @@ class NewbornRegistrationSerializer(serializers.Serializer):
     last_name = serializers.CharField(max_length=150, help_text="Usually the father's or mother's surname")
     sex = serializers.ChoiceField(choices=PatientProfile.SEX_CHOICES)
     weight_kg = serializers.DecimalField(max_digits=5, decimal_places=2, required=False, allow_null=True)
+    delivery_mode = serializers.CharField(max_length=100, required=False, allow_null=True)
+    birth_status = serializers.ChoiceField(choices=PatientProfile.BIRTH_STATUS_CHOICES, required=False, allow_null=True)
+    complications = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
 
 class RecordDeliverySerializer(serializers.Serializer):
@@ -180,6 +183,9 @@ class EpisodeBabySerializer(serializers.Serializer):
     full_name = serializers.CharField(source='get_full_name', read_only=True)
     sex = serializers.CharField(source='patient_profile.sex', read_only=True)
     date_of_birth = serializers.DateField(source='patient_profile.date_of_birth', read_only=True)
+    delivery_mode = serializers.CharField(source='patient_profile.delivery_mode', read_only=True)
+    birth_status = serializers.CharField(source='patient_profile.birth_status', read_only=True)
+    complications = serializers.CharField(source='patient_profile.complications', read_only=True)
 
 class AppointmentForANCSerializer(serializers.Serializer):
     # --- 1. Patient Identity (UUID or inline registration) ---
@@ -611,7 +617,11 @@ class AppointmentForPNCSerializer(serializers.Serializer):
                     baby_user.groups.add(patient_group)
                 PatientProfile.objects.create(
                     user=baby_user, sex=baby_data['sex'], date_of_birth=walk_in_data['delivery_date'],
-                    mother=patient, birth_episode=episode, created_by=user
+                    mother=patient, birth_episode=episode, 
+                    delivery_mode=baby_data.get('delivery_mode'),
+                    birth_status=baby_data.get('birth_status'),
+                    complications=baby_data.get('complications'),
+                    created_by=user
                 )
 
         assigned_to_id = validated_data.get('assigned_to_id')
@@ -691,3 +701,32 @@ class AppointmentForPNCSerializer(serializers.Serializer):
             episode.save(update_fields=['status', 'updated_at'])
 
         return pnc_visit
+
+class DeliverySerializer(serializers.ModelSerializer):
+    """
+    Returns full information of a new birth child (a delivery record).
+    """
+    episode_uuid = serializers.UUIDField(source='birth_episode.id', read_only=True)
+    episode_id = serializers.CharField(source='birth_episode.episode_id', read_only=True)
+    child_id = serializers.UUIDField(source='user.id', read_only=True)
+    child_name = serializers.CharField(source='user.get_full_name', read_only=True)
+    mother_id = serializers.UUIDField(source='mother.id', read_only=True)
+    mother_name = serializers.CharField(source='mother.get_full_name', read_only=True)
+    mother_patient_id = serializers.CharField(source='mother.patient_profile.patient_id', read_only=True)
+    month = serializers.SerializerMethodField()
+    delivery_date = serializers.DateField(source='date_of_birth', read_only=True)
+    
+    class Meta:
+        model = PatientProfile
+        fields = [
+            'id', 'episode_uuid', 'episode_id', 'patient_id', 'child_id', 'child_name',
+            'mother_id', 'mother_name', 'mother_patient_id', 
+            'month', 'delivery_date', 'delivery_mode', 
+            'birth_status', 'complications', 'sex'
+        ]
+
+    @extend_schema_field(serializers.CharField)
+    def get_month(self, obj):
+        if obj.date_of_birth:
+            return obj.date_of_birth.strftime('%B')
+        return None

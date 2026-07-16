@@ -252,6 +252,17 @@ class PatientProfile(BaseModel):
     patient_id = models.CharField(max_length=50, unique=True, editable=False)
     sequence_number = models.BigIntegerField(null=True, blank=True, editable=False, db_index=True)
 
+    # Birth Details (Populated during delivery)
+    delivery_mode = models.CharField(max_length=100, blank=True, null=True)
+    BIRTH_STATUS_CHOICES = (
+        ('ALIVE', 'Alive'),
+        ('ADMITTED', 'Admitted'),
+        ('DEAD', 'Dead')
+    )
+    birth_status = models.CharField(max_length=20, choices=BIRTH_STATUS_CHOICES, blank=True, null=True)
+    complications = models.TextField(blank=True, null=True)
+
+
     # Biological Constants
     blood_group = models.CharField(max_length=10, choices=BLOOD_GROUP_CHOICES, default='UNKNOWN')
     genotype = models.CharField(max_length=10, choices=GENOTYPE_CHOICES, default='UNKNOWN')

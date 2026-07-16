@@ -5,7 +5,8 @@ from .views import (
     MaternalCareEpisodeViewSet, ANCVisitViewSet,
     PNCVisitViewSet, PNCNewbornAssessmentViewSet,
     MaternalScheduleRuleViewSet, AppointmentForANCView,
-    AppointmentForPNCView, UpcomingMaternalFollowUpsView
+    AppointmentForPNCView, UpcomingMaternalFollowUpsView,
+    DeliveryViewSet
 )
 
 router = DefaultRouter()
@@ -14,6 +15,7 @@ router.register(r'episodes', MaternalCareEpisodeViewSet, basename='maternal-epis
 router.register(r'anc-visits', ANCVisitViewSet, basename='anc-visit')
 router.register(r'pnc-visits', PNCVisitViewSet, basename='pnc-visit')
 router.register(r'pnc-newborn-assessments', PNCNewbornAssessmentViewSet, basename='pnc-newborn-assessment')
+router.register(r'deliveries', DeliveryViewSet, basename='delivery')
 
 urlpatterns = [
     path('appointment-for-anc/', AppointmentForANCView.as_view(), name='unified-appointment-anc'),

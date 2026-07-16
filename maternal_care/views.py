@@ -24,7 +24,8 @@ from .serializers import (
     PNCVisitSerializer, PNCNewbornAssessmentSerializer,
     RecordDeliverySerializer, EpisodeBabySerializer,
     MaternalScheduleRuleSerializer, AppointmentForANCSerializer,
-    AppointmentForPNCSerializer, PaginatedMaternalFollowUpSerializer
+    AppointmentForPNCSerializer, PaginatedMaternalFollowUpSerializer,
+    DeliverySerializer
 )
 
 
@@ -188,7 +189,11 @@ class MaternalCareEpisodeViewSet(viewsets.ModelViewSet):
                 
             PatientProfile.objects.create(
                 user=baby_user, sex=baby_data['sex'], date_of_birth=data['delivery_date'],
-                mother=mother, birth_episode=episode, created_by=request.user
+                mother=mother, birth_episode=episode, 
+                delivery_mode=baby_data.get('delivery_mode'),
+                birth_status=baby_data.get('birth_status'),
+                complications=baby_data.get('complications'),
+                created_by=request.user
             )
             
             created_babies.append({
@@ -576,3 +581,29 @@ class UpcomingMaternalFollowUpsView(APIView):
                 "subtitle": f"{visit.timing_of_visit} · {_ordinal(upcoming_visit_number)} postnatal visit",
             })
         return items
+
+
+@extend_schema(
+    tags=["Maternal Care - Deliveries"],
+    parameters=[
+        OpenApiParameter(name='episode_id', description='Filter by raw Pregnancy Episode UUID', required=False, type=str),
+    ]
+)
+class DeliveryViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Endpoint to list and retrieve delivery records (babies born).
+    """
+    serializer_class = DeliverySerializer
+
+    def get_queryset(self):
+        # Return all patient profiles that have a birth episode
+        qs = PatientProfile.objects.filter(
+            birth_episode__isnull=False,
+            user__facility=self.request.user.facility
+        ).select_related('user', 'mother', 'mother__patient_profile').order_by('-date_of_birth')
+
+        episode_id = self.request.query_params.get('episode_id')
+        if episode_id:
+            qs = qs.filter(birth_episode__id=episode_id)
+
+        return qs
