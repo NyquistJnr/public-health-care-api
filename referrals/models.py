@@ -14,7 +14,9 @@ class Referral(BaseModel):
     STATUS_CHOICES = (
         ('PENDING', 'Pending'),
         ('ACCEPTED', 'Accepted'),
-        ('REJECTED', 'Rejected')
+        ('REJECTED', 'Rejected'),
+        ('CALL_CREATED', 'Call Created'),
+        ('COMPLETED', 'Completed')
     )
     DESTINATION_LEVEL_CHOICES = (
         ('PRIMARY', 'Primary Health Care (Internal)'),
@@ -69,3 +71,15 @@ class Referral(BaseModel):
     def __str__(self):
         dest = self.receiving_facility.name if self.receiving_facility else self.get_destination_level_display()
         return f"{self.referral_id}: {self.referring_facility.name} -> {dest}"
+
+
+class TelemedicineSession(BaseModel):
+    referral = models.OneToOneField(Referral, on_delete=models.CASCADE, related_name='telemedicine_session')
+    session_id = models.CharField(max_length=100, unique=True)
+    host_join_url = models.URLField(max_length=500, blank=True, null=True)
+    patient_join_url = models.URLField(max_length=500, blank=True, null=True)
+    status = models.CharField(max_length=20, default='created')
+    participants = models.JSONField(default=list, blank=True, null=True)
+
+    def __str__(self):
+        return f"Session {self.session_id} for Referral {self.referral.referral_id}"

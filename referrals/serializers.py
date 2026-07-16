@@ -2,7 +2,7 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from django.db import transaction
-from .models import Referral
+from .models import Referral, TelemedicineSession
 
 
 # ── Lightweight history serializers used by the patient-history endpoint ──
@@ -58,6 +58,11 @@ class ReferralPatientProfileSummarySerializer(serializers.Serializer):
     next_of_kin_phone = serializers.CharField(allow_null=True)
     next_of_kin_relationship = serializers.CharField(allow_null=True)
 
+class TelemedicineSessionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TelemedicineSession
+        fields = ['session_id', 'host_join_url', 'patient_join_url', 'status', 'participants']
+
 class ReferralReadSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source='patient.get_full_name', read_only=True)
     patient_display_id = serializers.CharField(source='patient.patient_profile.patient_id', read_only=True)
@@ -65,6 +70,7 @@ class ReferralReadSerializer(serializers.ModelSerializer):
     receiving_facility_name = serializers.CharField(source='receiving_facility.name', read_only=True)
     referred_by_name = serializers.CharField(source='referred_by.get_full_name', read_only=True)
     direction = serializers.SerializerMethodField()
+    telemedicine_session = TelemedicineSessionSerializer(read_only=True)
 
     class Meta:
         model = Referral
@@ -72,7 +78,7 @@ class ReferralReadSerializer(serializers.ModelSerializer):
             'id', 'referral_id', 'appointment', 'patient', 'patient_name', 'patient_display_id',
             'referring_facility', 'referring_facility_name', 'receiving_facility', 'receiving_facility_name',
             'referred_by', 'referred_by_name', 'referral_type', 'reason_for_referral', 
-            'clinical_summary', 'status', 'created_at', 'direction'
+            'clinical_summary', 'status', 'created_at', 'direction', 'telemedicine_session'
         ]
 
     @extend_schema_field(serializers.CharField())

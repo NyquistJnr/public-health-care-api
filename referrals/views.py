@@ -8,7 +8,13 @@ from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
 from django.db.models import Q
 from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
-from .models import Referral
+from django.conf import settings
+import hmac
+import hashlib
+import json
+import httpx
+from .models import Referral, TelemedicineSession
+from .telemedicine_client import TelemedicineClient
 from .serializers import (
     ReferralReadSerializer, ReferralCreateSerializer, ReferralStatusUpdateSerializer,
     ReferralAppointmentSummarySerializer, ReferralVitalsSummarySerializer,
@@ -208,6 +214,174 @@ class ReferralViewSet(viewsets.ModelViewSet):
             "consultations": consultations_data,
         })
 
+    @extend_schema(
+        summary="Create a Telemedicine Session for a Referral",
+        description="Creates a Daily.co room and sends automated emails. Valid only for PENDING and ACCEPTED referrals.",
+        request=inline_serializer(
+            name="TelemedicineCreateRequest",
+            fields={
+                "title": serializers.CharField(required=False),
+                "duration_minutes": serializers.IntegerField(default=60),
+                "scheduled_for": serializers.DateTimeField(required=False),
+                "host_name": serializers.CharField(required=False),
+                "host_email": serializers.EmailField(required=False),
+                "medical_data": serializers.DictField(required=False, help_text="Optional custom key-value pairs for medical data"),
+                "additional_participants": serializers.ListField(
+                    child=serializers.DictField(), 
+                    required=False, 
+                    help_text="Array of additional participants, e.g. [{'name': 'Nurse Joy', 'email': 'joy@hospital.com', 'role': 'nurse'}]"
+                ),
+            }
+        )
+    )
+    @action(detail=True, methods=['post'], url_path='create-telemedicine-session')
+    def create_telemedicine_session(self, request, pk=None):
+        referral = self.get_object()
+
+        if referral.status not in ['PENDING', 'ACCEPTED']:
+            return Response(
+                {"detail": f"Cannot create meeting. Referral status is {referral.status}."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if hasattr(referral, 'telemedicine_session') and referral.telemedicine_session.status != 'ended':
+            return Response(
+                {"detail": "An active telemedicine session already exists for this referral."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        title = request.data.get('title', f"Telemedicine Session - {referral.referral_id}")
+        duration_minutes = request.data.get('duration_minutes', 60)
+        scheduled_for = request.data.get('scheduled_for')
+
+        host_name = request.data.get('host_name', request.user.get_full_name())
+        host_email = request.data.get('host_email', request.user.email)
+
+        patient = referral.patient
+        patient_name = patient.get_full_name() or "Patient"
+        patient_email = patient.email
+
+        participants = [
+            {"role": "doctor", "name": host_name, "email": host_email, "is_host": True},
+            {"role": "patient", "name": patient_name, "email": patient_email, "is_host": False}
+        ]
+
+        additional_participants = request.data.get('additional_participants')
+        if isinstance(additional_participants, list):
+            for ap in additional_participants:
+                if isinstance(ap, dict) and 'name' in ap and 'email' in ap:
+                    participants.append({
+                        "role": ap.get('role', 'guest'),
+                        "name": ap['name'],
+                        "email": ap['email'],
+                        "is_host": ap.get('is_host', False)
+                    })
+
+        profile = getattr(patient, 'patient_profile', None)
+        allergies = profile.allergies.split(',') if profile and profile.allergies else []
+        
+        medical_data = {
+            "patient_name": patient.get_full_name(),
+            "patient_phone": patient.phone_number,
+            "allergies": [a.strip() for a in allergies if a.strip()],
+            "notes": referral.reason_for_referral
+        }
+
+        if profile:
+            medical_data["age"] = profile.age or profile.age_group
+            medical_data["sex"] = profile.get_sex_display() if hasattr(profile, 'get_sex_display') else profile.sex
+            if profile.blood_group:
+                medical_data["blood_group"] = profile.blood_group
+            if profile.genotype:
+                medical_data["genotype"] = profile.genotype
+            if profile.chronic_conditions:
+                medical_data["chronic_conditions"] = profile.chronic_conditions
+
+        vitals = referral.appointment.vitals.filter().order_by('created_at').last() if referral.appointment else None
+        if vitals and vitals._has_measurements():
+            medical_data["latest_vitals"] = {
+                "blood_pressure": vitals.blood_pressure,
+                "temperature_c": vitals.temperature,
+                "pulse_bpm": vitals.pulse_rate,
+                "spo2_percent": vitals.spo2,
+                "weight_kg": vitals.weight_kg,
+            }
+
+        # Merge custom medical data if provided by the frontend
+        custom_medical_data = request.data.get('medical_data')
+        if isinstance(custom_medical_data, dict):
+            medical_data.update(custom_medical_data)
+
+        client = TelemedicineClient()
+        try:
+            session_data = client.create_session(
+                title=title,
+                duration_minutes=duration_minutes,
+                scheduled_for=scheduled_for,
+                participants=participants,
+                medical_data=medical_data
+            )
+        except httpx.HTTPError as e:
+            return Response({"detail": f"Failed to communicate with Telemedicine API: {str(e)}"}, status=status.HTTP_502_BAD_GATEWAY)
+
+        # Handle unexpected payload structure gracefully
+        session_id = session_data.get('id')
+        if not session_id and 'data' in session_data:
+            session_data = session_data['data']
+            session_id = session_data.get('id')
+
+        if not session_id:
+            return Response(
+                {"detail": f"Telemedicine API returned an unexpected payload: {session_data}"}, 
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+
+        # Store session
+        host_url = next((p.get('join_url') for p in session_data.get('participants', []) if p.get('role') == 'doctor'), None)
+        patient_url = next((p.get('join_url') for p in session_data.get('participants', []) if p.get('role') == 'patient'), None)
+
+        TelemedicineSession.objects.update_or_create(
+            referral=referral,
+            defaults={
+                'session_id': session_id,
+                'host_join_url': host_url,
+                'patient_join_url': patient_url,
+                'status': 'created',
+                'participants': session_data.get('participants', [])
+            }
+        )
+
+        referral.status = 'CALL_CREATED'
+        referral.save(update_fields=['status'])
+
+        return Response(session_data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(summary="End a Telemedicine Session", request=None)
+    @action(detail=True, methods=['post'], url_path='end-telemedicine-session')
+    def end_telemedicine_session(self, request, pk=None):
+        referral = self.get_object()
+
+        if not hasattr(referral, 'telemedicine_session'):
+            return Response({"detail": "No telemedicine session found."}, status=status.HTTP_404_NOT_FOUND)
+
+        session = referral.telemedicine_session
+        if session.status == 'ended':
+            return Response({"detail": "Session already ended."}, status=status.HTTP_400_BAD_REQUEST)
+
+        client = TelemedicineClient()
+        try:
+            client.end_session(session.session_id)
+        except httpx.HTTPError as e:
+            return Response({"detail": f"Failed to communicate with Telemedicine API: {str(e)}"}, status=status.HTTP_502_BAD_GATEWAY)
+
+        session.status = 'ended'
+        session.save(update_fields=['status'])
+
+        referral.status = 'COMPLETED'
+        referral.save(update_fields=['status'])
+
+        return Response({"detail": "Session successfully ended and purged."}, status=status.HTTP_200_OK)
+
 
 class ExternalReferralActionView(APIView):
     """
@@ -281,3 +455,52 @@ class ExternalReferralActionView(APIView):
             return Response({"error": "Invalid or tampered security token."}, status=status.HTTP_400_BAD_REQUEST)
         except Referral.DoesNotExist:
             return Response({"error": "Referral record not found in the system."}, status=status.HTTP_404_NOT_FOUND)
+
+
+class TelemedicineWebhookView(APIView):
+    """
+    Endpoint for Telemedicine API Webhooks.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(exclude=True)
+    def post(self, request, *args, **kwargs):
+        signature = request.headers.get('x-telemedicine-signature')
+        if not signature:
+            return Response({"error": "Missing signature"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        webhook_secret = getattr(settings, 'TELEMEDICINE_WEBHOOK_SECRET', None)
+        if not webhook_secret:
+            return Response({"error": "Webhook secret not configured"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        computed = hmac.new(
+            webhook_secret.encode('utf-8'),
+            request.body,
+            hashlib.sha256
+        ).hexdigest()
+
+        if not hmac.compare_digest(signature, computed):
+            return Response({"error": "Invalid signature"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            payload = json.loads(request.body)
+        except json.JSONDecodeError:
+            return Response({"error": "Invalid JSON body"}, status=status.HTTP_400_BAD_REQUEST)
+
+        event_type = payload.get("event_type")
+        data = payload.get("data", {})
+        session_id = data.get("session_id")
+
+        if event_type == "call.ended" and session_id:
+            try:
+                ts = TelemedicineSession.objects.get(session_id=session_id)
+                ts.status = "ended"
+                ts.save(update_fields=['status'])
+                
+                ts.referral.status = 'COMPLETED'
+                ts.referral.save(update_fields=['status'])
+            except TelemedicineSession.DoesNotExist:
+                pass
+
+        return Response({"status": "success"}, status=status.HTTP_200_OK)
