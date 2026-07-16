@@ -55,6 +55,7 @@ class PrescriptionItem(BaseModel):
     )
     custom_drug_name = models.CharField(max_length=255, blank=True, null=True, help_text="Used only if the drug is not in inventory")
     quantity = models.PositiveIntegerField(default=1, help_text="Number of units (tablets, vials, etc.) to dispense for this item")
+    dispensed_quantity = models.PositiveIntegerField(default=0, help_text="Number of units that have actually been dispensed so far")
 
     dosage = models.CharField(max_length=100, help_text="e.g., 500mg, 10ml")
     frequency = models.CharField(max_length=100, help_text="e.g., BD (Twice daily), TDS (Thrice daily)")

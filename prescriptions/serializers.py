@@ -21,7 +21,7 @@ class PrescriptionItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = PrescriptionItem
         fields = [
-            'id', 'inventory_item', 'custom_drug_name', 'medication_name', 'quantity',
+            'id', 'inventory_item', 'custom_drug_name', 'medication_name', 'quantity', 'dispensed_quantity',
             'dosage', 'frequency', 'duration', 'route', 'special_instructions'
         ]
 
@@ -35,6 +35,21 @@ class PrescriptionItemSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Provide either a drug from inventory OR a custom name, not both.")
             
         return attrs
+
+class PartialDispenseItemSerializer(serializers.Serializer):
+    id = serializers.UUIDField(help_text="ID of the PrescriptionItem")
+    quantity = serializers.IntegerField(help_text="Amount to dispense right now")
+
+class PartialDispenseSerializer(serializers.Serializer):
+    items = PartialDispenseItemSerializer(
+        many=True, 
+        required=False, 
+        help_text="List of items and quantities to dispense. If omitted, dispenses remaining balance for all items."
+    )
+    force_complete = serializers.BooleanField(
+        default=False,
+        help_text="Set to true to mark the prescription as fully DISPENSED even if some items are partially dispensed (e.g. out of stock and patient will buy elsewhere)."
+    )
 
 class PrescriptionReadSerializer(serializers.ModelSerializer):
     patient_name = serializers.CharField(source='patient.get_full_name', read_only=True)

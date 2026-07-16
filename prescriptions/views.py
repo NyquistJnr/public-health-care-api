@@ -16,7 +16,8 @@ from core.pagination import StandardResultsSetPagination
 from .serializers import (
     PrescriptionReadSerializer, PrescriptionCreateSerializer,
     PrescriptionStatsResponseSerializer, BasicPrescriptionStatsSerializer,
-    PaginatedPharmacyActivitySerializer, PharmacyPieChartSerializer
+    PaginatedPharmacyActivitySerializer, PharmacyPieChartSerializer,
+    PartialDispenseSerializer
 )
 
 PHARMACY_STOCK_CATEGORIES = ['DRUG', 'CONSUMABLE']
@@ -83,11 +84,9 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
     @extend_schema(
         summary="Dispense Prescription",
         description=(
-            "Dispenses the entire prescription in one go: FIFO-deducts stock for every "
-            "inventory-linked item and marks the prescription DISPENSED. Fails atomically "
-            "(no stock is deducted) if any item has insufficient stock."
+            "Dispenses the prescription. Can dispense all remaining items or specific quantities."
         ),
-        request=None,
+        request=PartialDispenseSerializer,
     )
     @action(detail=True, methods=['post'])
     @transaction.atomic
@@ -100,16 +99,52 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        for item in prescription.items.select_related('inventory_item').filter(inventory_item__isnull=False):
-            try:
-                dispense_fifo_stock(item.inventory_item, item.quantity, request.user)
-            except InsufficientStockError as e:
-                # Raise (rather than return a Response) so the exception propagates out of
-                # this @transaction.atomic block and rolls back any deductions already made
-                # for earlier items in this loop - dispensing must be all-or-nothing.
-                raise ValidationError({"detail": f"Insufficient stock for '{item.get_medication_name()}': {e}"})
+        serializer = PartialDispenseSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        dispense_items = serializer.validated_data.get('items', None)
+        force_complete = serializer.validated_data.get('force_complete', False)
 
-        prescription.status = 'DISPENSED'
+        if dispense_items is not None:
+            dispense_map = {item['id']: item['quantity'] for item in dispense_items}
+        else:
+            dispense_map = None
+
+        for item in prescription.items.all():
+            qty_to_dispense = 0
+            if dispense_map is not None:
+                qty_to_dispense = dispense_map.get(item.id, 0)
+            else:
+                qty_to_dispense = item.quantity - item.dispensed_quantity
+
+            if qty_to_dispense > 0:
+                if item.dispensed_quantity + qty_to_dispense > item.quantity:
+                    raise ValidationError({"detail": f"Cannot dispense more than prescribed for '{item.get_medication_name()}'."})
+                
+                # Only deduct stock if it's an inventory item
+                if item.inventory_item:
+                    try:
+                        dispense_fifo_stock(item.inventory_item, qty_to_dispense, request.user)
+                    except InsufficientStockError as e:
+                        raise ValidationError({"detail": f"Insufficient stock for '{item.get_medication_name()}': {e}"})
+
+                item.dispensed_quantity += qty_to_dispense
+                item.save(update_fields=['dispensed_quantity'])
+
+        if force_complete:
+            prescription.status = 'DISPENSED'
+        else:
+            all_items_met = True
+            for item in prescription.items.all():
+                if item.dispensed_quantity < item.quantity:
+                    all_items_met = False
+                    break
+            
+            if all_items_met:
+                prescription.status = 'DISPENSED'
+            else:
+                prescription.status = 'PARTIAL'
+
         prescription.save(update_fields=['status', 'updated_at'])
 
         return Response(PrescriptionReadSerializer(prescription).data, status=status.HTTP_200_OK)
