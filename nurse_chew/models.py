@@ -28,7 +28,7 @@ class HealthPromotion(BaseModel):
     start_date = models.DateTimeField(blank=True, null=True)
     end_date = models.DateTimeField(blank=True, null=True)
     
-    assigned_to = models.ManyToManyField(User, related_name='assigned_health_promotions', limit_choices_to={'role__in': ['CHEW', 'NURSE', 'DOCTOR']}, blank=True)
+    assigned_to = models.ManyToManyField(User, related_name='assigned_health_promotions', limit_choices_to=~models.Q(role='PATIENT'), blank=True)
     description = models.TextField(blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT')
 
