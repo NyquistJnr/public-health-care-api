@@ -117,6 +117,8 @@ class HealthPromotionSerializer(serializers.ModelSerializer):
 
 class PostActivitySerializer(serializers.ModelSerializer):
     created_by_name = serializers.SerializerMethodField(read_only=True)
+    promotion_id = serializers.CharField(source='health_promotion.promotion_id', read_only=True)
+    promotion_title = serializers.CharField(source='health_promotion.title', read_only=True)
 
     class Meta:
         model = PostActivity

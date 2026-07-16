@@ -408,11 +408,11 @@ class ChewStatsView(APIView):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
 
-        users_qs = User.objects.filter(role='PATIENT', created_by__role='CHEW', created_by__facility=request.user.facility)
-        visits_qs = Appointment.objects.filter(visit_type='COMMUNITY', assigned_to__role='CHEW', facility=request.user.facility)
-        anc_qs = ANCVisit.objects.filter(created_by__role='CHEW', appointment__facility=request.user.facility)
-        pnc_qs = PNCVisit.objects.filter(created_by__role='CHEW', appointment__facility=request.user.facility)
-        hp_qs = HealthPromotion.objects.filter(created_by__role='CHEW')
+        users_qs = User.objects.filter(role='PATIENT', created_by__isnull=False, created_by__facility=request.user.facility)
+        visits_qs = Appointment.objects.filter(visit_type='COMMUNITY', facility=request.user.facility)
+        anc_qs = ANCVisit.objects.filter(appointment__facility=request.user.facility)
+        pnc_qs = PNCVisit.objects.filter(appointment__facility=request.user.facility)
+        hp_qs = HealthPromotion.objects.filter(created_by__facility=request.user.facility)
 
         if start_date:
             users_qs = users_qs.filter(created_at__date__gte=start_date)
@@ -461,13 +461,13 @@ class ChewActivityReportStatsView(APIView):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
 
-        users_qs = User.objects.filter(role='PATIENT', created_by__role='CHEW', created_by__facility=request.user.facility)
-        appt_qs = Appointment.objects.filter(assigned_to__role='CHEW', facility=request.user.facility)
-        anc_qs = ANCVisit.objects.filter(created_by__role='CHEW', appointment__facility=request.user.facility)
-        pnc_qs = PNCVisit.objects.filter(created_by__role='CHEW', appointment__facility=request.user.facility)
+        users_qs = User.objects.filter(role='PATIENT', created_by__isnull=False, created_by__facility=request.user.facility)
+        appt_qs = Appointment.objects.filter(facility=request.user.facility)
+        anc_qs = ANCVisit.objects.filter(appointment__facility=request.user.facility)
+        pnc_qs = PNCVisit.objects.filter(appointment__facility=request.user.facility)
         community_qs = appt_qs.filter(visit_type='COMMUNITY')
-        hp_qs = HealthPromotion.objects.filter(created_by__role='CHEW')
-        pa_qs = PostActivity.objects.filter(created_by__role='CHEW')
+        hp_qs = HealthPromotion.objects.filter(created_by__facility=request.user.facility)
+        pa_qs = PostActivity.objects.filter(created_by__facility=request.user.facility)
 
         if start_date:
             users_qs = users_qs.filter(created_at__date__gte=start_date)
