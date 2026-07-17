@@ -45,6 +45,11 @@ class AdverseEvent(BaseModel):
     detailed_symptoms = models.TextField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='REPORTED')
 
+    reported_comment = models.TextField(null=True, blank=True)
+    under_review_comment = models.TextField(null=True, blank=True)
+    resolved_comment = models.TextField(null=True, blank=True)
+    closed_comment = models.TextField(null=True, blank=True)
+
     def save(self, *args, **kwargs):
         if not self.event_id:
             with transaction.atomic():

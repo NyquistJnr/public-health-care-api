@@ -20,7 +20,8 @@ class AdverseEventSerializer(serializers.ModelSerializer):
             'reported_by', 'reported_by_name',
             'suspected_drug', 'suspected_drug_name', 'dosage',
             'date_of_reaction', 'stop_date', 'reaction_type', 'severity',
-            'detailed_symptoms', 'status', 'created_at'
+            'detailed_symptoms', 'status', 'created_at',
+            'reported_comment', 'under_review_comment', 'resolved_comment', 'closed_comment'
         ]
 
     @extend_schema_field(serializers.CharField)
@@ -62,7 +63,8 @@ class AdverseEventWriteSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'event_id', 'patient', 'reported_by', 'suspected_drug', 'dosage',
             'date_of_reaction', 'stop_date', 'reaction_type', 'severity',
-            'detailed_symptoms', 'status'
+            'detailed_symptoms', 'status',
+            'reported_comment', 'under_review_comment', 'resolved_comment', 'closed_comment'
         ]
         read_only_fields = ['id', 'event_id']
         extra_kwargs = {'status': {'required': False}}
