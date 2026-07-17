@@ -15,13 +15,15 @@ class AppointmentReadSerializer(serializers.ModelSerializer):
     patient_name = serializers.SerializerMethodField()
     patient_display_id = serializers.CharField(source='patient.patient_profile.patient_id', read_only=True)
     assigned_staff_name = serializers.SerializerMethodField()
+    assigned_for_vitals_name = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Appointment
         fields = [
             'id', 'appointment_id', 'patient', 'patient_name', 'patient_display_id',
-            'assigned_to', 'assigned_staff_name', 'appointment_date', 'appointment_time',
+            'assigned_to', 'assigned_staff_name', 'assigned_for_vitals', 'assigned_for_vitals_name',
+            'appointment_date', 'appointment_time',
             'visit_type', 'status', 'priority', 'reason_for_visit', 'notes',
             'created_by', 'created_by_name', 'created_at'
         ]
@@ -34,6 +36,12 @@ class AppointmentReadSerializer(serializers.ModelSerializer):
     def get_assigned_staff_name(self, obj):
         if obj.assigned_to:
             return f"{obj.assigned_to.first_name} {obj.assigned_to.last_name} ({obj.assigned_to.get_role_display()})"
+        return "Unassigned"
+
+    @extend_schema_field(serializers.CharField())
+    def get_assigned_for_vitals_name(self, obj):
+        if obj.assigned_for_vitals:
+            return f"{obj.assigned_for_vitals.first_name} {obj.assigned_for_vitals.last_name} ({obj.assigned_for_vitals.get_role_display()})"
         return "Unassigned"
 
     @extend_schema_field(serializers.CharField())
@@ -102,7 +110,7 @@ class AppointmentWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Appointment
         fields = [
-            'patient', 'assigned_to', 'appointment_date',
+            'patient', 'assigned_to', 'assigned_for_vitals', 'appointment_date',
             'appointment_time', 'visit_type', 'reason_for_visit', 'notes',
             # Inline patient
             'first_name', 'last_name', 'middle_name', 'phone_number', 'email',

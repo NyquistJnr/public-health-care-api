@@ -190,6 +190,45 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
+    @extend_schema(
+        tags=["Appointments"],
+        summary="Get Appointments Awaiting Vitals",
+        description="Returns appointments that have been assigned to a staff member for vitals and are awaiting vitals.",
+        parameters=[
+            OpenApiParameter(name='assigned_to_me', description='If true, only returns appointments assigned for vitals to the logged-in user', required=False, type=bool),
+            OpenApiParameter(name='search', description='Search by Patient Name, ID, or Appointment ID', required=False, type=str),
+        ]
+    )
+    @action(detail=False, methods=['get'], url_path='awaiting-vitals')
+    def awaiting_vitals(self, request):
+        qs = Appointment.objects.filter(
+            facility=request.user.facility,
+            assigned_for_vitals__isnull=False,
+            status__in=['SCHEDULED', 'ARRIVED']
+        ).select_related('patient', 'assigned_for_vitals', 'created_by')
+
+        if request.query_params.get('assigned_to_me', '').lower() == 'true':
+            qs = qs.filter(assigned_for_vitals=request.user)
+
+        search = request.query_params.get('search')
+        if search:
+            qs = qs.filter(
+                Q(patient__first_name__icontains=search) |
+                Q(patient__last_name__icontains=search) |
+                Q(patient__patient_profile__patient_id__icontains=search) |
+                Q(appointment_id__icontains=search)
+            )
+
+        qs = qs.order_by('appointment_date', 'appointment_time')
+
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
 @extend_schema_view(
     list=extend_schema(tags=["Patient Vitals"], summary="List all facility vitals"),
     create=extend_schema(tags=["Patient Vitals"], summary="Record new patient vitals"),

@@ -38,6 +38,7 @@ class Appointment(BaseModel):
     sequence_number = models.BigIntegerField(null=True, blank=True, editable=False, db_index=True)
     patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='appointments', limit_choices_to={'role': 'PATIENT'})
     assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='assigned_appointments', limit_choices_to={'role__in': ['DOCTOR', 'NURSE']})
+    assigned_for_vitals = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='vitals_assignments', limit_choices_to={'role__in': ['NURSE', 'CHEW', 'DOCTOR']})
 
     appointment_date = models.DateField()
     appointment_time = models.TimeField()
