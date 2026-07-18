@@ -155,8 +155,28 @@ class ComprehensiveModuleReportView(APIView):
 
         requested_modules = [m.strip().lower() for m in modules_param.split(',')] if modules_param else []
 
+        ROLE_MODULE_MAPPING = {
+            'DOCTOR': ['patients', 'appointments', 'lab tests', 'lab results', 'prescriptions', 'referrals'],
+            'NURSE': ['patients', 'appointments', 'ancs', 'pncs', 'delivery', 'maternal care', 'health promotions'],
+            'PHARMACIST': ['patients', 'prescriptions'],
+            'LAB_TECHNICIAN': ['patients', 'lab tests', 'lab results'],
+            'CHEW': ['patients', 'appointments', 'health promotions', 'referrals'],
+            'IHO': ['patients', 'appointments', 'ancs', 'pncs', 'delivery', 'lab tests', 'lab results', 'prescriptions', 'referrals', 'health promotions', 'maternal care']
+        }
+
+        # Determine default modules based on role
+        default_modules = None
+        user_role = request.user.role if getattr(request.user, 'role', None) else 'PATIENT'
+        if user_role not in ['ADMIN', 'STATE_IT_ADMIN', 'FACILITY_IT_ADMIN', 'OFFICER_IN_CHARGE']:
+            default_modules = ROLE_MODULE_MAPPING.get(user_role, [])
+
         def is_requested(module_name):
-            return not requested_modules or module_name.lower() in requested_modules
+            m = module_name.lower()
+            if requested_modules:
+                return m in requested_modules
+            if default_modules is not None:
+                return m in default_modules
+            return True
 
         response_data = {}
         
@@ -321,9 +341,36 @@ class ModuleCompletionPercentageReportView(APIView):
             percentage = round((completed / count * 100), 2) if count > 0 else 0.0
             return count, completed, percentage
 
+        modules_param = request.query_params.get('modules')
+        requested_modules = [m.strip().lower() for m in modules_param.split(',')] if modules_param else []
+
+        ROLE_MODULE_MAPPING = {
+            'DOCTOR': ['patients', 'appointments', 'lab tests', 'lab results', 'prescriptions', 'referrals'],
+            'NURSE': ['patients', 'appointments', 'ancs', 'pncs', 'delivery', 'maternal care', 'health promotions'],
+            'PHARMACIST': ['patients', 'prescriptions'],
+            'LAB_TECHNICIAN': ['patients', 'lab tests', 'lab results'],
+            'CHEW': ['patients', 'appointments', 'health promotions', 'referrals'],
+            'IHO': ['patients', 'appointments', 'ancs', 'pncs', 'delivery', 'lab tests', 'lab results', 'prescriptions', 'referrals', 'health promotions', 'maternal care']
+        }
+
+        default_modules = None
+        user_role = request.user.role if getattr(request.user, 'role', None) else 'PATIENT'
+        if user_role not in ['ADMIN', 'STATE_IT_ADMIN', 'FACILITY_IT_ADMIN', 'OFFICER_IN_CHARGE']:
+            default_modules = ROLE_MODULE_MAPPING.get(user_role, [])
+
+        def is_requested(module_name):
+            m = module_name.lower()
+            if requested_modules:
+                return m in requested_modules
+            if default_modules is not None:
+                return m in default_modules
+            return True
+
         modules_data = []
 
         def append_module(name, qs, completed_filter, date_field='created_at'):
+            if not is_requested(name):
+                return
             c, comp, pct = get_count_and_completed(qs, completed_filter, date_field)
             modules_data.append({
                 "module_name": name,
