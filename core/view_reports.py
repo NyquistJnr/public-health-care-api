@@ -164,11 +164,13 @@ class ComprehensiveModuleReportView(APIView):
         fac_q = get_facility_q(request, 'facility')
         apt_fac_q = get_facility_q(request, 'appointment__facility')
         out_ref_q = get_facility_q(request, 'referring_facility')
-        # specific to episode
         ep_fac_q = get_facility_q(request, 'patient__facility')
+        visit_fac_q = get_facility_q(request, 'episode__patient__facility')
 
         def build_date_q(field_name):
             if start_date and end_date:
+                if field_name == 'appointment_date':
+                    return Q(**{f"{field_name}__range": [start_date, end_date]})
                 return Q(**{f"{field_name}__date__range": [start_date, end_date]})
             return Q()
 
@@ -195,7 +197,7 @@ class ComprehensiveModuleReportView(APIView):
             }
 
         if is_requested('ancs'):
-            c, comp = get_count_and_completed(ANCVisit.objects.filter(ep_fac_q), Q(appointment__status='COMPLETED'), 'created_at')
+            c, comp = get_count_and_completed(ANCVisit.objects.filter(visit_fac_q), Q(appointment__status='COMPLETED'), 'created_at')
             response_data['ancs'] = {
                 "count": c,
                 "completed": comp,
@@ -203,7 +205,7 @@ class ComprehensiveModuleReportView(APIView):
             }
 
         if is_requested('pncs'):
-            c, comp = get_count_and_completed(PNCVisit.objects.filter(ep_fac_q), Q(appointment__status='COMPLETED'), 'created_at')
+            c, comp = get_count_and_completed(PNCVisit.objects.filter(visit_fac_q), Q(appointment__status='COMPLETED'), 'created_at')
             response_data['pncs'] = {
                 "count": c,
                 "completed": comp,
@@ -211,7 +213,8 @@ class ComprehensiveModuleReportView(APIView):
             }
 
         if is_requested('delivery'):
-            c, comp = get_count_and_completed(PatientProfile.objects.filter(fac_q, birth_episode__isnull=False), None, 'created_at')
+            patient_fac_q = get_facility_q(request, 'user__facility')
+            c, comp = get_count_and_completed(PatientProfile.objects.filter(patient_fac_q, birth_episode__isnull=False), None, 'created_at')
             response_data['delivery'] = {
                 "count": c,
                 "completed": comp,
@@ -302,9 +305,12 @@ class ModuleCompletionPercentageReportView(APIView):
         apt_fac_q = get_facility_q(request, 'appointment__facility')
         out_ref_q = get_facility_q(request, 'referring_facility')
         ep_fac_q = get_facility_q(request, 'patient__facility')
+        visit_fac_q = get_facility_q(request, 'episode__patient__facility')
 
         def build_date_q(field_name):
             if start_date and end_date:
+                if field_name == 'appointment_date':
+                    return Q(**{f"{field_name}__range": [start_date, end_date]})
                 return Q(**{f"{field_name}__date__range": [start_date, end_date]})
             return Q()
 
@@ -328,9 +334,10 @@ class ModuleCompletionPercentageReportView(APIView):
 
         append_module('Patients', User.objects.filter(fac_q, role='PATIENT'), Q(is_active=True))
         append_module('Appointments', Appointment.objects.filter(fac_q), Q(status='COMPLETED'), 'appointment_date')
-        append_module('ANCs', ANCVisit.objects.filter(ep_fac_q), Q(appointment__status='COMPLETED'))
-        append_module('PNCs', PNCVisit.objects.filter(ep_fac_q), Q(appointment__status='COMPLETED'))
-        append_module('Delivery', PatientProfile.objects.filter(fac_q, birth_episode__isnull=False), None)
+        append_module('ANCs', ANCVisit.objects.filter(visit_fac_q), Q(appointment__status='COMPLETED'))
+        append_module('PNCs', PNCVisit.objects.filter(visit_fac_q), Q(appointment__status='COMPLETED'))
+        patient_fac_q = get_facility_q(request, 'user__facility')
+        append_module('Delivery', PatientProfile.objects.filter(patient_fac_q, birth_episode__isnull=False), None)
         append_module('Lab Tests', LabRequest.objects.filter(apt_fac_q), Q(status='COMPLETED'))
         
         lab_results_qs = LabTest.objects.filter(lab_request__appointment__facility=request.user.facility if getattr(request.user, 'facility', None) else None) if getattr(request.user, 'facility', None) else LabTest.objects.all()
