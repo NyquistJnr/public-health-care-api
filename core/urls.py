@@ -21,6 +21,10 @@ from .view_alerts import ActiveAlertsView
 
 from .view_qstash_webhook import QStashWebhookView
 
+from .view_clinical_stats import (
+    ClinicalStatsView, PatientVisitTrendView, ClinicalActivityView, DiseaseOverviewView
+)
+
 auth_patterns = [
     path('login/', CustomLoginView.as_view(), name='token_obtain_pair'),
     path('refresh/', CustomTokenRefreshView.as_view(), name='token_refresh'),
@@ -63,11 +67,18 @@ stats_patterns = [
     path('failed-logins-unknown-emails/', FailedLoginsUnknownEmailsView.as_view(), name='stats_failed_logins_unknown_emails'),
 ]
 
+clinical_stats_patterns = [
+    path('clinical-stats/', ClinicalStatsView.as_view(), name='clinical_stats'),
+    path('patient-visit-trend/', PatientVisitTrendView.as_view(), name='clinical_stats_visit_trend'),
+    path('clinical-activity/', ClinicalActivityView.as_view(), name='clinical_stats_activity'),
+    path('disease-overview/', DiseaseOverviewView.as_view(), name='clinical_stats_disease_overview'),
+]
+
 alerts_patterns = [
     path('active/', ActiveAlertsView.as_view(), name='alerts_active'),
 ]
 
 urlpatterns = (
     auth_patterns + user_management_patterns + patient_patterns + system_patterns
-    + stats_patterns + alerts_patterns
+    + stats_patterns + clinical_stats_patterns + alerts_patterns
 )

@@ -122,6 +122,7 @@ class User(AbstractUser):
 
     ROLE_CHOICES = (
         ('ADMIN', 'State Admin'),
+        ('STATE_IT_ADMIN', 'State IT Admin'),
         ('FACILITY_IT_ADMIN', 'Facility IT Admin'),
         ('OFFICER_IN_CHARGE', 'Officer In Charge (OIC)'),
         ('DOCTOR', 'Doctor'),

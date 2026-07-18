@@ -37,3 +37,15 @@ class IsFacilityITAdmin(permissions.BasePermission):
     def has_permission(self, request, view):
         user = request.user
         return bool(user and user.is_authenticated and (user.is_superuser or user.role == 'FACILITY_IT_ADMIN'))
+
+
+class IsClinicalStatsViewer(permissions.BasePermission):
+    """Restricts access to ADMIN, STATE_IT_ADMIN, FACILITY_IT_ADMIN, OFFICER_IN_CHARGE, or superusers."""
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        if user.is_superuser:
+            return True
+        return user.role in ['ADMIN', 'STATE_IT_ADMIN', 'FACILITY_IT_ADMIN', 'OFFICER_IN_CHARGE']
