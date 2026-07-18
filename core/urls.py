@@ -76,11 +76,19 @@ clinical_stats_patterns = [
     path('disease-overview/', DiseaseOverviewView.as_view(), name='clinical_stats_disease_overview'),
 ]
 
+from .view_reports import DailyActivityReportView, ComprehensiveModuleReportView, ModuleCompletionPercentageReportView
+
+reports_patterns = [
+    path('daily-activity/', DailyActivityReportView.as_view(), name='reports_daily_activity'),
+    path('comprehensive-modules/', ComprehensiveModuleReportView.as_view(), name='reports_comprehensive_modules'),
+    path('module-completion-percentages/', ModuleCompletionPercentageReportView.as_view(), name='reports_module_completion_percentages'),
+]
+
 alerts_patterns = [
     path('active/', ActiveAlertsView.as_view(), name='alerts_active'),
 ]
 
 urlpatterns = (
     auth_patterns + user_management_patterns + patient_patterns + system_patterns
-    + stats_patterns + clinical_stats_patterns + alerts_patterns
+    + stats_patterns + clinical_stats_patterns + alerts_patterns + reports_patterns
 )
