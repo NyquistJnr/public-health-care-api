@@ -6,9 +6,15 @@ from core.urls import (
     patient_patterns,
     system_patterns,
     stats_patterns,
-    alerts_patterns
+    alerts_patterns,
+    clinical_stats_patterns
 )
+from core.view_facility import PatientRecentAppointmentListView
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
+
+core_patterns = clinical_stats_patterns + [
+    path('recent-appointments/', PatientRecentAppointmentListView.as_view(), name='core_recent_appointments'),
+]
 
 urlpatterns = [
     path('auth/', include((auth_patterns, 'auth'))),
@@ -17,6 +23,7 @@ urlpatterns = [
     path('system/', include((system_patterns, 'system'))),
     path('stats/', include((stats_patterns, 'stats'))),
     path('alerts/', include((alerts_patterns, 'alerts'))),
+    path('core/', include((core_patterns, 'core'))),
 
     path('registry/', include('registry.urls')),
     path('facilities/', include('facilities.urls')),

@@ -7,8 +7,10 @@ from .views import (
 )
 from .view_facility import (
     FacilityUserListView, PatientCreateView, FacilityUserStatsView, PatientChildrenListView,
-    UserStatusToggleView, SpecificFacilityUserListView, PatientListView, PatientDetailView
+    UserStatusToggleView, SpecificFacilityUserListView, PatientListView, PatientDetailView,
+    PatientRecentAppointmentListView
 )
+
 from .view_audit_log import (
     AuditLogListView, NotificationListView, NotificationMarkReadView
 )

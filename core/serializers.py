@@ -339,3 +339,32 @@ class PatientUpdateSerializer(serializers.ModelSerializer):
                 profile.save()
 
         return instance
+
+
+class PatientRecentAppointmentSerializer(PatientSerializer):
+    recent_appointment_status = serializers.SerializerMethodField()
+    recent_appointment_date = serializers.SerializerMethodField()
+
+    class Meta(PatientSerializer.Meta):
+        fields = PatientSerializer.Meta.fields + ['recent_appointment_status', 'recent_appointment_date']
+        read_only_fields = fields
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_recent_appointment_status(self, obj):
+        if hasattr(obj, 'prefetched_latest_appointments') and obj.prefetched_latest_appointments:
+            apt = obj.prefetched_latest_appointments[0]
+            if hasattr(apt, 'prefetched_referrals') and apt.prefetched_referrals:
+                return "Referred"
+            
+            if apt.status in ['SCHEDULED', 'ARRIVED', 'VITALS_DONE']:
+                return "Waiting"
+            elif apt.status in ['IN_CONSULTATION', 'COMPLETED']:
+                return "Seen"
+            return apt.status.capitalize() if apt.status else None
+        return None
+
+    @extend_schema_field(serializers.DateField(allow_null=True))
+    def get_recent_appointment_date(self, obj):
+        if hasattr(obj, 'prefetched_latest_appointments') and obj.prefetched_latest_appointments:
+            return obj.prefetched_latest_appointments[0].appointment_date
+        return None

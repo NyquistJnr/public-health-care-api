@@ -263,3 +263,60 @@ class PatientChildrenListView(generics.ListAPIView):
             patient_profile__mother_id=mother_id,
             facility=self.request.user.facility
         ).select_related('patient_profile')
+
+
+from django.db.models import F, Max
+from appointments.models import Appointment
+from referrals.models import Referral
+from .serializers import PatientRecentAppointmentSerializer
+from .pagination import StandardResultsSetPagination
+
+@extend_schema(
+    tags=["Patient Management"], 
+    summary="List all patients sorted by most recent appointment with dynamic status",
+    parameters=[
+        OpenApiParameter(name='search', description='Search by name, email, phone, or Patient ID', required=False, type=str),
+    ]
+)
+class PatientRecentAppointmentListView(generics.ListAPIView):
+    serializer_class = PatientRecentAppointmentSerializer
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        user = self.request.user
+
+        apt_prefetch = Prefetch(
+            'appointments',
+            queryset=Appointment.objects.prefetch_related(
+                Prefetch('referrals', queryset=Referral.objects.all(), to_attr='prefetched_referrals')
+            ).order_by('-appointment_date', '-appointment_time'),
+            to_attr='prefetched_latest_appointments'
+        )
+
+        maternal_prefetch = Prefetch(
+            'pregnancies',
+            queryset=MaternalCareEpisode.objects.filter(status__in=['ACTIVE', 'DELIVERED']).order_by('-created_at'),
+            to_attr='prefetched_maternal_episodes'
+        )
+
+        qs = User.objects.filter(
+            role='PATIENT', 
+            facility=user.facility
+        ).select_related('patient_profile__created_by').prefetch_related(apt_prefetch, maternal_prefetch)
+
+        qs = qs.annotate(
+            latest_apt_date=Max('appointments__appointment_date'),
+            latest_apt_time=Max('appointments__appointment_time')
+        ).order_by(F('latest_apt_date').desc(nulls_last=True), F('latest_apt_time').desc(nulls_last=True))
+
+        search = self.request.query_params.get('search')
+        if search:
+            qs = qs.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(email__icontains=search) |
+                Q(phone_number__icontains=search) |
+                Q(patient_profile__patient_id__icontains=search) 
+            )
+
+        return qs
