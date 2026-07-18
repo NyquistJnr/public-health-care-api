@@ -28,6 +28,29 @@ class PatientActivityChartSerializer(serializers.Serializer):
     end_date = serializers.DateField()
     results = PatientActivityDaySerializer(many=True)
 
+class FacilityITAdminStatsSerializer(serializers.Serializer):
+    total_users = serializers.IntegerField(help_text="Total users in the facility")
+    system_alert_count = serializers.IntegerField(help_text="Number of system alerts")
+    system_uptime = serializers.CharField(help_text="System uptime percentage")
+
+class FacilityITAdminSystemStatusSerializer(serializers.Serializer):
+    server_health = serializers.DictField(child=serializers.CharField(), help_text="e.g. {'status': 'Online', 'percentage': '99.9'}")
+    database_status = serializers.DictField(child=serializers.CharField(), help_text="e.g. {'status': 'Connected', 'percentage': '100.0'}")
+    error_alerts = serializers.DictField(child=serializers.CharField(), help_text="e.g. {'count': '5', 'percentage': '2.1'}")
+    system_uptime = serializers.DictField(child=serializers.CharField(), help_text="e.g. {'uptime': '15D 10H 30M', 'percentage': '99.9'}")
+
+class FacilityITAdminUserActivitySerializer(serializers.Serializer):
+    active_users = serializers.IntegerField(help_text="Currently active users in the facility")
+    login_attempts = serializers.IntegerField(help_text="Total login attempts")
+    failed_logins = serializers.IntegerField(help_text="Failed login attempts")
+
+class FacilityITAdminSystemAlertsItemSerializer(serializers.Serializer):
+    title = serializers.CharField()
+    description = serializers.CharField()
+
+class FacilityITAdminSystemAlertsSerializer(serializers.Serializer):
+    alerts = FacilityITAdminSystemAlertsItemSerializer(many=True)
+
 class FacilitySerializer(serializers.ModelSerializer):
     state = serializers.SerializerMethodField()
     manager_name = serializers.SerializerMethodField()

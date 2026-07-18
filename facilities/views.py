@@ -11,12 +11,14 @@ from rest_framework.exceptions import ValidationError
 from rest_framework import status
 from django.db import connection
 
-from core.models import User
-from core.permissions import IsStateAdmin
+from core.models import User, UserSession, LoginEvent, FailedLoginAttempt, ErrorLog
+from core.permissions import IsStateAdmin, IsFacilityITAdmin
 from appointments.models import Appointment
 from .models import Facility
 from .serializers import (
-    FacilitySerializer, StateFacilityStatsSerializer, PatientActivityChartSerializer
+    FacilitySerializer, StateFacilityStatsSerializer, PatientActivityChartSerializer,
+    FacilityITAdminStatsSerializer, FacilityITAdminSystemStatusSerializer,
+    FacilityITAdminUserActivitySerializer, FacilityITAdminSystemAlertsSerializer
 )
 from core.serializers import StatusUpdateSerializer, EmptyStatsSerializer
 
@@ -218,3 +220,168 @@ class PatientActivityChartView(APIView):
             "end_date": end_date,
             "results": results
         })
+
+@extend_schema(
+    tags=["Facility IT Admin"],
+    summary="Get IT Admin Dashboard Stats",
+    parameters=[
+        OpenApiParameter(name='start_date', description='Start date (YYYY-MM-DD)', required=False, type=str),
+        OpenApiParameter(name='end_date', description='End date (YYYY-MM-DD)', required=False, type=str),
+    ],
+    responses=FacilityITAdminStatsSerializer
+)
+class FacilityITAdminStatsView(APIView):
+    permission_classes = [IsFacilityITAdmin]
+
+    def get(self, request):
+        facility = request.user.facility
+        if not facility:
+            return Response({"detail": "User has no assigned facility."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+
+        users_qs = User.objects.filter(facility=facility)
+        
+        if start_date:
+            users_qs = users_qs.filter(created_at__gte=start_date)
+        if end_date:
+            users_qs = users_qs.filter(created_at__lte=end_date)
+            
+        total_users = users_qs.count()
+
+        return Response({
+            "total_users": total_users,
+            "system_alert_count": 3,  # Mocked as per plan
+            "system_uptime": "99.9%"  # Mocked as per plan
+        })
+
+
+@extend_schema(
+    tags=["Facility IT Admin"],
+    summary="Get System Status",
+    responses=FacilityITAdminSystemStatusSerializer
+)
+class FacilityITAdminSystemStatusView(APIView):
+    permission_classes = [IsFacilityITAdmin]
+
+    def get(self, request):
+        # We count error logs for the last 24 hours as a proxy for error alerts
+        yesterday = timezone.now() - timedelta(days=1)
+        error_count = ErrorLog.objects.filter(timestamp__gte=yesterday).count()
+
+        return Response({
+            "server_health": {"status": "Online", "percentage": "99.9"},
+            "database_status": {"status": "Connected", "percentage": "100.0"},
+            "error_alerts": {"count": str(error_count), "percentage": "2.1"},
+            "system_uptime": {"uptime": "15D 10H 30M", "percentage": "99.9"}
+        })
+
+
+@extend_schema(
+    tags=["Facility IT Admin"],
+    summary="Get Real-time User Activity",
+    parameters=[
+        OpenApiParameter(name='start_date', description='Start date (YYYY-MM-DD)', required=False, type=str),
+        OpenApiParameter(name='end_date', description='End date (YYYY-MM-DD)', required=False, type=str),
+    ],
+    responses=FacilityITAdminUserActivitySerializer
+)
+class FacilityITAdminUserActivityView(APIView):
+    permission_classes = [IsFacilityITAdmin]
+
+    def get(self, request):
+        facility = request.user.facility
+        if not facility:
+            return Response({"detail": "User has no assigned facility."}, status=status.HTTP_400_BAD_REQUEST)
+
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+
+        # Active users (open sessions)
+        sessions_qs = UserSession.objects.filter(facility=facility, ended_at__isnull=True)
+        
+        # Login events
+        logins_qs = LoginEvent.objects.filter(facility=facility)
+        failed_qs = FailedLoginAttempt.objects.filter(facility=facility)
+
+        if start_date:
+            sessions_qs = sessions_qs.filter(started_at__gte=start_date)
+            logins_qs = logins_qs.filter(timestamp__gte=start_date)
+            failed_qs = failed_qs.filter(timestamp__gte=start_date)
+        if end_date:
+            sessions_qs = sessions_qs.filter(started_at__lte=end_date)
+            logins_qs = logins_qs.filter(timestamp__lte=end_date)
+            failed_qs = failed_qs.filter(timestamp__lte=end_date)
+
+        failed_count = failed_qs.count()
+        login_attempts = logins_qs.count() + failed_count
+
+        return Response({
+            "active_users": sessions_qs.count(),
+            "login_attempts": login_attempts,
+            "failed_logins": failed_count
+        })
+
+
+@extend_schema(
+    tags=["Facility IT Admin"],
+    summary="Get System Alerts",
+    responses=FacilityITAdminSystemAlertsSerializer
+)
+class FacilityITAdminSystemAlertsView(APIView):
+    permission_classes = [IsFacilityITAdmin]
+
+    def get(self, request):
+        facility = request.user.facility
+        if not facility:
+            return Response({"detail": "User has no assigned facility."}, status=status.HTTP_400_BAD_REQUEST)
+
+        alerts = []
+        
+        # Check for multiple failed login attempts from same IP in last 24h
+        yesterday = timezone.now() - timedelta(days=1)
+        suspicious_ips = FailedLoginAttempt.objects.filter(
+            facility=facility, 
+            timestamp__gte=yesterday
+        ).values('ip_address').annotate(count=Count('id')).filter(count__gte=3)
+
+        for item in suspicious_ips:
+            ip = item['ip_address']
+            if ip:
+                alerts.append({
+                    "title": "Multiple Failed Login Attempts",
+                    "description": f"Repeated failed logins from IP {ip} detected."
+                })
+
+        # Mocked hardware alerts as per plan
+        alerts.append({
+            "title": "High Memory Usage",
+            "description": "Application server memory at 82% capacity"
+        })
+        alerts.append({
+            "title": "Database Sync Delay",
+            "description": "Data synchronization with backup server delayed by 30 minutes"
+        })
+
+        return Response({
+            "alerts": alerts
+        })
+
+
+@extend_schema(
+    tags=["Facility IT Admin"],
+    summary="Get Current Facility Information",
+    responses=FacilitySerializer
+)
+class FacilityITAdminInfoView(APIView):
+    permission_classes = [IsFacilityITAdmin]
+
+    def get(self, request):
+        facility = request.user.facility
+        if not facility:
+            return Response({"detail": "User has no assigned facility."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        serializer = FacilitySerializer(facility)
+        return Response(serializer.data)
+

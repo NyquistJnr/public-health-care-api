@@ -3,7 +3,8 @@
 from rest_framework import viewsets, status, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Q
+from django.db.models import Q, Value
+from django.db.models.functions import Concat
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from .models import Department
 from core.models import User
@@ -32,11 +33,12 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = Department.objects.filter(facility=self.request.user.facility)
         
-        search = self.request.query_params.get('search')
         is_active_param = self.request.query_params.get('is_active')
 
-        if search:
-            qs = qs.filter(name__icontains=search)
+        if self.action == 'list':
+            search = self.request.query_params.get('search')
+            if search:
+                qs = qs.filter(name__icontains=search)
             
         if is_active_param is not None:
             is_active_bool = is_active_param.lower() in ['true', '1', 't', 'y', 'yes']
@@ -69,10 +71,14 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 
         search = request.query_params.get('search')
         if search:
-            members_qs = members_qs.filter(
+            members_qs = members_qs.annotate(
+                full_name=Concat('first_name', Value(' '), 'last_name')
+            ).filter(
                 Q(first_name__icontains=search) |
                 Q(last_name__icontains=search) |
-                Q(staff_id__icontains=search)
+                Q(staff_id__icontains=search) |
+                Q(full_name__icontains=search) |
+                Q(email__icontains=search)
             )
 
         members_qs = members_qs.order_by('first_name', 'last_name')
