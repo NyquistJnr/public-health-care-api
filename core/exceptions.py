@@ -26,11 +26,16 @@ def custom_api_exception_handler(exc, context):
     response = exception_handler(exc, context)
 
     if response is None:
-        logger.error(f"Unhandled Server Error: {exc}", exc_info=True)
+        from django.db.utils import ProgrammingError, OperationalError
+        if isinstance(exc, (ProgrammingError, OperationalError)):
+            logger.warning(f"Silenced Database Error (likely missing tenant schema): {exc}")
+        else:
+            logger.error(f"Unhandled Server Error: {exc}", exc_info=True)
+            
         _log_error(exc, context, status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response({
-            "detail": str(exc)
+            "detail": "An internal database error occurred."
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     return response
@@ -39,15 +44,24 @@ def custom_api_exception_handler(exc, context):
 def _log_error(exc, context, status_code):
     # Local import avoids a hard import-time dependency on core.models from this module.
     from core.models import ErrorLog
+    from django.db.utils import ProgrammingError, OperationalError
 
     request = context.get('request')
     try:
+        user = None
+        if request:
+            try:
+                if getattr(request, 'user', None) and request.user.is_authenticated:
+                    user = request.user
+            except (ProgrammingError, OperationalError):
+                pass
+                
         ErrorLog.objects.create(
             error_message=str(exc),
             endpoint=getattr(request, 'path', None),
             status_code=status_code,
             ip_address=get_client_ip(request) if request else None,
-            user=request.user if request and getattr(request, 'user', None) and request.user.is_authenticated else None,
+            user=user,
         )
     except Exception:
         # Never let logging failure mask the original error response.

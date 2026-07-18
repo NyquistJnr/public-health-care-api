@@ -135,27 +135,35 @@ class ActivityTrackingMiddleware:
 
     def _track(self, request, user):
         from .models import ModuleUsageLog, UserSession
+        from django.db.utils import ProgrammingError, OperationalError
 
         now = timezone.now()
-        facility = getattr(user, 'facility', None)
+        
+        try:
+            facility = getattr(user, 'facility', None)
+        except (ProgrammingError, OperationalError):
+            facility = None
 
-        if not user.last_active or now - user.last_active >= self.WRITE_THROTTLE:
-            type(user).objects.filter(pk=user.pk).update(last_active=now)
+        try:
+            if not user.last_active or now - user.last_active >= self.WRITE_THROTTLE:
+                type(user).objects.filter(pk=user.pk).update(last_active=now)
 
-        session = UserSession.objects.filter(user=user, ended_at__isnull=True).order_by('-last_active_at').first()
-        if session and now - session.last_active_at <= self.IDLE_TIMEOUT:
-            if now - session.last_active_at >= self.WRITE_THROTTLE:
-                session.last_active_at = now
-                session.save(update_fields=['last_active_at'])
-        else:
-            if session:
-                session.ended_at = session.last_active_at
-                session.save(update_fields=['ended_at'])
-            UserSession.objects.create(user=user, facility=facility, started_at=now, last_active_at=now)
+            session = UserSession.objects.filter(user=user, ended_at__isnull=True).order_by('-last_active_at').first()
+            if session and now - session.last_active_at <= self.IDLE_TIMEOUT:
+                if now - session.last_active_at >= self.WRITE_THROTTLE:
+                    session.last_active_at = now
+                    session.save(update_fields=['last_active_at'])
+            else:
+                if session:
+                    session.ended_at = session.last_active_at
+                    session.save(update_fields=['ended_at'])
+                UserSession.objects.create(user=user, facility=facility, started_at=now, last_active_at=now)
 
-        module = self._resolve_module(request.path)
-        if module:
-            ModuleUsageLog.objects.create(user=user, facility=facility, module=module)
+            module = self._resolve_module(request.path)
+            if module:
+                ModuleUsageLog.objects.create(user=user, facility=facility, module=module)
+        except (ProgrammingError, OperationalError):
+            pass
 
     def _resolve_module(self, path):
         for prefix, module in self.MODULE_PATH_MAP:
