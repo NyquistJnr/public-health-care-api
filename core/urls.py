@@ -133,6 +133,20 @@ doctor_reports_patterns = [
     path('clinical-outcomes/', ClinicalOutcomeReportView.as_view(), name='doctor_reports_clinical_outcomes'),
 ]
 
+from .view_nurse_reports import (
+    VitalSignsReportView, ImmunizationReportView, PostnatalCareReportView,
+    MaternalCareReportView, FollowUpReportView, HealthEducationReportView
+)
+
+nurse_reports_patterns = [
+    path('vital-signs/', VitalSignsReportView.as_view(), name='nurse_reports_vital_signs'),
+    path('immunization/', ImmunizationReportView.as_view(), name='nurse_reports_immunization'),
+    path('postnatal-care/', PostnatalCareReportView.as_view(), name='nurse_reports_postnatal_care'),
+    path('maternal-care/', MaternalCareReportView.as_view(), name='nurse_reports_maternal_care'),
+    path('follow-ups/', FollowUpReportView.as_view(), name='nurse_reports_follow_ups'),
+    path('health-education/', HealthEducationReportView.as_view(), name='nurse_reports_health_education'),
+]
+
 alerts_patterns = [
     path('active/', ActiveAlertsView.as_view(), name='alerts_active'),
 ]
@@ -141,4 +155,5 @@ urlpatterns = (
     auth_patterns + user_management_patterns + patient_patterns + system_patterns
     + stats_patterns + clinical_stats_patterns + alerts_patterns + reports_patterns
     + state_admin_reports_patterns + oic_reports_patterns + doctor_reports_patterns
+    + nurse_reports_patterns
 )
