@@ -102,6 +102,24 @@ state_admin_reports_patterns = [
     path('adverse-events/', AdverseEventsReportView.as_view(), name='state_admin_reports_adverse_events'),
 ]
 
+from .view_oic_reports import (
+    OicDashboardView, FacilitySummaryReportView, OicMaternalHealthReportView, OicChildHealthReportView,
+    FamilyPlanningReportView, OicDiseaseSurveillanceReportView, OicReferralReportView,
+    OicAdverseEventsReportView, OicMonthlyNhmisSummaryView
+)
+
+oic_reports_patterns = [
+    path('dashboard/', OicDashboardView.as_view(), name='oic_reports_dashboard'),
+    path('facility-summary/', FacilitySummaryReportView.as_view(), name='oic_reports_facility_summary'),
+    path('maternal-health/', OicMaternalHealthReportView.as_view(), name='oic_reports_maternal_health'),
+    path('child-health/', OicChildHealthReportView.as_view(), name='oic_reports_child_health'),
+    path('family-planning/', FamilyPlanningReportView.as_view(), name='oic_reports_family_planning'),
+    path('disease-surveillance/', OicDiseaseSurveillanceReportView.as_view(), name='oic_reports_disease_surveillance'),
+    path('referrals/', OicReferralReportView.as_view(), name='oic_reports_referrals'),
+    path('adverse-events/', OicAdverseEventsReportView.as_view(), name='oic_reports_adverse_events'),
+    path('monthly-nhmis-summary/', OicMonthlyNhmisSummaryView.as_view(), name='oic_reports_monthly_nhmis_summary'),
+]
+
 alerts_patterns = [
     path('active/', ActiveAlertsView.as_view(), name='alerts_active'),
 ]
@@ -109,5 +127,5 @@ alerts_patterns = [
 urlpatterns = (
     auth_patterns + user_management_patterns + patient_patterns + system_patterns
     + stats_patterns + clinical_stats_patterns + alerts_patterns + reports_patterns
-    + state_admin_reports_patterns
+    + state_admin_reports_patterns + oic_reports_patterns
 )

@@ -49,3 +49,11 @@ class IsClinicalStatsViewer(permissions.BasePermission):
         if user.is_superuser:
             return True
         return user.role in ['ADMIN', 'STATE_IT_ADMIN', 'FACILITY_IT_ADMIN', 'OFFICER_IN_CHARGE']
+
+
+class IsOfficerInCharge(permissions.BasePermission):
+    """Restricts access to Officers In Charge (role='OFFICER_IN_CHARGE') or Django superusers."""
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(user and user.is_authenticated and (user.is_superuser or user.role == 'OFFICER_IN_CHARGE'))
