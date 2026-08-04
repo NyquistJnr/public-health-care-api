@@ -30,7 +30,7 @@ class AuditLogListView(generics.ListAPIView):
         qs = AuditLog.objects.all()
         # if user.role == 'ADMIN':
         #     qs = AuditLog.objects.all()
-        # elif user.role == 'FACILITY_IT_ADMIN':
+        # elif user.role in ['FACILITY_IT_ADMIN', 'OFFICER_IN_CHARGE']:
         #     qs = AuditLog.objects.filter(facility=user.facility)
         # else:
         #     raise PermissionDenied("You do not have security clearance to view audit logs.")
@@ -81,7 +81,7 @@ class NotificationListView(generics.ListAPIView):
 
         if user.role == 'ADMIN':
             qs = AuditLog.objects.all()
-        elif user.role == 'FACILITY_IT_ADMIN':
+        elif user.role in ['FACILITY_IT_ADMIN', 'OFFICER_IN_CHARGE']:
             qs = AuditLog.objects.filter(facility=user.facility)
         else:
             qs = AuditLog.objects.filter(actor=user)
