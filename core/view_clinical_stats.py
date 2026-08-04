@@ -12,6 +12,10 @@ from consultations.models import Consultation
 from laboratory.models import LabRequest
 from prescriptions.models import Prescription
 from referrals.models import Referral
+from core.serializers_clinical_stats import (
+    ClinicalStatsResponseSerializer, PatientVisitTrendResponseSerializer,
+    ClinicalActivityResponseSerializer, DiseaseOverviewResponseSerializer,
+)
 
 DATE_RANGE_PARAMETERS = [
     OpenApiParameter(name='start_date', description='Start date (YYYY-MM-DD)', required=False, type=str),
@@ -31,6 +35,7 @@ def get_facility_q(request, prefix='facility'):
     summary="Get Today's Patients Stats",
     description="Stats for waiting patients, seen patients, referrals, consultations, and lab tests.",
     parameters=DATE_RANGE_PARAMETERS,
+    responses=ClinicalStatsResponseSerializer,
 )
 class ClinicalStatsView(APIView):
     permission_classes = [IsClinicalStatsViewer]
@@ -80,6 +85,7 @@ class ClinicalStatsView(APIView):
     summary="Get Patient Visit Trend",
     description="Bar chart data: Number of patients against dates.",
     parameters=DATE_RANGE_PARAMETERS,
+    responses=PatientVisitTrendResponseSerializer,
 )
 class PatientVisitTrendView(APIView):
     permission_classes = [IsClinicalStatsViewer]
@@ -105,6 +111,7 @@ class PatientVisitTrendView(APIView):
     summary="Get Clinical Activity Stats",
     description="Counts of Consultations, Lab tests, and Prescriptions.",
     parameters=DATE_RANGE_PARAMETERS,
+    responses=ClinicalActivityResponseSerializer,
 )
 class ClinicalActivityView(APIView):
     permission_classes = [IsClinicalStatsViewer]
@@ -130,6 +137,7 @@ class ClinicalActivityView(APIView):
     summary="Get Disease Overview",
     description="Array of each of the diseases and their percentages.",
     parameters=DATE_RANGE_PARAMETERS,
+    responses=DiseaseOverviewResponseSerializer,
 )
 class DiseaseOverviewView(APIView):
     permission_classes = [IsClinicalStatsViewer]

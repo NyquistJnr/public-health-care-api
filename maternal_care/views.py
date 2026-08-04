@@ -594,6 +594,9 @@ class DeliveryViewSet(viewsets.ReadOnlyModelViewSet):
     Endpoint to list and retrieve delivery records (babies born).
     """
     serializer_class = DeliverySerializer
+    # Only used by the router/schema generator to type the "id" path parameter (a request-less
+    # context); get_queryset() below is what actually serves requests.
+    queryset = PatientProfile.objects.filter(birth_episode__isnull=False)
 
     def get_queryset(self):
         # Return all patient profiles that have a birth episode

@@ -11,6 +11,18 @@ class NurseStatsResponseSerializer(serializers.Serializer):
     maternal_alerts = serializers.IntegerField(help_text="Active pregnancies with documented risk factors")
     vaccines_due = serializers.IntegerField(help_text="Newborns <= 28 days with zero recorded immunizations")
 
+class ChewStatsResponseSerializer(serializers.Serializer):
+    new_registrations = serializers.IntegerField()
+    community_visits = serializers.IntegerField()
+    maternal_follow_ups = serializers.IntegerField()
+    health_promotions = serializers.IntegerField()
+
+class ChewActivityReportStatsResponseSerializer(serializers.Serializer):
+    total_activities = serializers.IntegerField()
+    patients_reached = serializers.IntegerField()
+    maternal_follow_ups = serializers.IntegerField()
+    community_visits = serializers.IntegerField()
+
 class MaternalAlertItemSerializer(serializers.Serializer):
     alert_type = serializers.CharField(help_text="URGENT_APPOINTMENT, OVERDUE_ANC, OVERDUE_PNC")
     patient_name = serializers.CharField()

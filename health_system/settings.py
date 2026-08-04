@@ -226,6 +226,7 @@ SPECTACULAR_SETTINGS = {
         'MaternalCareEpisodeStatusEnum': 'maternal_care.models.MaternalCareEpisode.STATUS_CHOICES',
         'AdverseEventStatusEnum': 'adverse_events.models.AdverseEvent.STATUS_CHOICES',
         'DiseaseSeverityEnum': 'registry.models.Disease.SEVERITY_CHOICES',
+        'AdverseEventSeverityEnum': 'adverse_events.models.AdverseEvent.SEVERITY_CHOICES',
     },
 }
 

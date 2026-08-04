@@ -18,6 +18,10 @@ from referrals.models import Referral
 from maternal_care.models import MaternalCareEpisode, ANCVisit, PNCVisit
 from nurse_chew.models import HealthPromotion
 from core.pagination import StandardResultsSetPagination
+from core.serializers_reports import (
+    DailyActivityRowSerializer, ComprehensiveModuleReportResponseSerializer,
+    ModuleCompletionPercentageResponseSerializer,
+)
 
 def get_facility_q(request, prefix='facility'):
     user = request.user
@@ -47,6 +51,7 @@ def parse_date(date_str):
 class DailyActivityReportView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
     pagination_class = StandardResultsSetPagination
+    serializer_class = DailyActivityRowSerializer
 
     def get(self, request):
         start_date_str = request.query_params.get('start_date')
@@ -137,7 +142,8 @@ class DailyActivityReportView(generics.GenericAPIView):
         OpenApiParameter(name='start_date', description='Start date (YYYY-MM-DD)', required=False, type=str),
         OpenApiParameter(name='end_date', description='End date (YYYY-MM-DD)', required=False, type=str),
         OpenApiParameter(name='modules', description='Comma separated list of modules (e.g. patients,appointments)', required=False, type=str),
-    ]
+    ],
+    responses=ComprehensiveModuleReportResponseSerializer,
 )
 class ComprehensiveModuleReportView(APIView):
     permission_classes = [IsAuthenticated]
@@ -306,7 +312,8 @@ class ComprehensiveModuleReportView(APIView):
     parameters=[
         OpenApiParameter(name='start_date', description='Start date (YYYY-MM-DD)', required=False, type=str),
         OpenApiParameter(name='end_date', description='End date (YYYY-MM-DD)', required=False, type=str),
-    ]
+    ],
+    responses=ModuleCompletionPercentageResponseSerializer,
 )
 class ModuleCompletionPercentageReportView(APIView):
     permission_classes = [IsAuthenticated]

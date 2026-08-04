@@ -84,6 +84,24 @@ reports_patterns = [
     path('module-completion-percentages/', ModuleCompletionPercentageReportView.as_view(), name='reports_module_completion_percentages'),
 ]
 
+from .view_state_admin_reports import (
+    FacilityPerformanceReportView, MaternalHealthReportView, ChildHealthReportView,
+    DiseaseSurveillanceReportView, DrugLogisticsReportView, HumanResourcesReportView,
+    FinancialSummaryReportView, ReferralAnalyticsReportView, AdverseEventsReportView
+)
+
+state_admin_reports_patterns = [
+    path('facility-performance/', FacilityPerformanceReportView.as_view(), name='state_admin_reports_facility_performance'),
+    path('maternal-health/', MaternalHealthReportView.as_view(), name='state_admin_reports_maternal_health'),
+    path('child-health/', ChildHealthReportView.as_view(), name='state_admin_reports_child_health'),
+    path('disease-surveillance/', DiseaseSurveillanceReportView.as_view(), name='state_admin_reports_disease_surveillance'),
+    path('drug-logistics/', DrugLogisticsReportView.as_view(), name='state_admin_reports_drug_logistics'),
+    path('human-resources/', HumanResourcesReportView.as_view(), name='state_admin_reports_human_resources'),
+    path('financial-summary/', FinancialSummaryReportView.as_view(), name='state_admin_reports_financial_summary'),
+    path('referral-analytics/', ReferralAnalyticsReportView.as_view(), name='state_admin_reports_referral_analytics'),
+    path('adverse-events/', AdverseEventsReportView.as_view(), name='state_admin_reports_adverse_events'),
+]
+
 alerts_patterns = [
     path('active/', ActiveAlertsView.as_view(), name='alerts_active'),
 ]
@@ -91,4 +109,5 @@ alerts_patterns = [
 urlpatterns = (
     auth_patterns + user_management_patterns + patient_patterns + system_patterns
     + stats_patterns + clinical_stats_patterns + alerts_patterns + reports_patterns
+    + state_admin_reports_patterns
 )

@@ -24,6 +24,8 @@ from referrals.serializers import ReferralReadSerializer
 from .models import HealthPromotion, PostActivity
 from .serializers import (
     NurseStatsResponseSerializer,
+    ChewStatsResponseSerializer,
+    ChewActivityReportStatsResponseSerializer,
     PaginatedMaternalAlertsSerializer,
     ImmunizationDueItemSerializer,
     HealthPromotionSerializer,
@@ -401,7 +403,8 @@ class PostActivityViewSet(viewsets.ModelViewSet):
     parameters=[
         OpenApiParameter(name='start_date', description='Filter from date (YYYY-MM-DD)', required=False, type=str),
         OpenApiParameter(name='end_date', description='Filter to date (YYYY-MM-DD)', required=False, type=str),
-    ]
+    ],
+    responses=ChewStatsResponseSerializer,
 )
 class ChewStatsView(APIView):
     def get(self, request):
@@ -454,7 +457,8 @@ class HealthPromotionsTodayView(generics.ListAPIView):
     parameters=[
         OpenApiParameter(name='start_date', description='Filter from date (YYYY-MM-DD)', required=False, type=str),
         OpenApiParameter(name='end_date', description='Filter to date (YYYY-MM-DD)', required=False, type=str),
-    ]
+    ],
+    responses=ChewActivityReportStatsResponseSerializer,
 )
 class ChewActivityReportStatsView(APIView):
     def get(self, request):
