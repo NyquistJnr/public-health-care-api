@@ -120,6 +120,19 @@ oic_reports_patterns = [
     path('monthly-nhmis-summary/', OicMonthlyNhmisSummaryView.as_view(), name='oic_reports_monthly_nhmis_summary'),
 ]
 
+from .view_doctor_reports import (
+    ConsultationReportView, DiseaseMorbidityReportView, DoctorReferralReportView,
+    DoctorAdverseEventsReportView, ClinicalOutcomeReportView
+)
+
+doctor_reports_patterns = [
+    path('consultation-summary/', ConsultationReportView.as_view(), name='doctor_reports_consultation_summary'),
+    path('disease-morbidity/', DiseaseMorbidityReportView.as_view(), name='doctor_reports_disease_morbidity'),
+    path('referrals/', DoctorReferralReportView.as_view(), name='doctor_reports_referrals'),
+    path('adverse-events/', DoctorAdverseEventsReportView.as_view(), name='doctor_reports_adverse_events'),
+    path('clinical-outcomes/', ClinicalOutcomeReportView.as_view(), name='doctor_reports_clinical_outcomes'),
+]
+
 alerts_patterns = [
     path('active/', ActiveAlertsView.as_view(), name='alerts_active'),
 ]
@@ -127,5 +140,5 @@ alerts_patterns = [
 urlpatterns = (
     auth_patterns + user_management_patterns + patient_patterns + system_patterns
     + stats_patterns + clinical_stats_patterns + alerts_patterns + reports_patterns
-    + state_admin_reports_patterns + oic_reports_patterns
+    + state_admin_reports_patterns + oic_reports_patterns + doctor_reports_patterns
 )

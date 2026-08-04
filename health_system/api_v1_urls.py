@@ -10,7 +10,8 @@ from core.urls import (
     clinical_stats_patterns,
     reports_patterns,
     state_admin_reports_patterns,
-    oic_reports_patterns
+    oic_reports_patterns,
+    doctor_reports_patterns
 )
 from core.view_facility import PatientRecentAppointmentListView
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
@@ -29,6 +30,7 @@ urlpatterns = [
     path('reports/', include((reports_patterns, 'reports'))),
     path('reports/state-admin/', include((state_admin_reports_patterns, 'state_admin_reports'))),
     path('reports/oic/', include((oic_reports_patterns, 'oic_reports'))),
+    path('reports/doctor/', include((doctor_reports_patterns, 'doctor_reports'))),
     path('core/', include((core_patterns, 'core'))),
 
     path('registry/', include('registry.urls')),

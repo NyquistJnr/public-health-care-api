@@ -12,7 +12,6 @@ _vitamin_a_deworming_counts) rather than hard-coded, since no dedicated model ex
 the underlying dispense data does.
 """
 import calendar
-import re
 from collections import Counter
 from datetime import date
 
@@ -28,7 +27,7 @@ from appointments.models import Appointment
 from consultations.models import Consultation
 from core.models import PatientProfile, User
 from core.permissions import IsOfficerInCharge
-from core.utils import get_validated_date_range
+from core.utils import get_validated_date_range, word_boundary_q
 from immunization.models import ImmunizationRecord
 from inventory.models import InventoryItem, InventoryTransaction
 from maternal_care.models import ANCVisit, MaternalCareEpisode
@@ -210,25 +209,15 @@ def _adverse_event_metrics(facility, start_date, end_date):
     }
 
 
-def _word_boundary_q(field_lookup, patterns):
-    """Builds an OR'd Q using Postgres word-boundary regex (\\y) rather than icontains,
-    since short acronym patterns like "ARI"/"TB"/"HIV" would otherwise false-match as a
-    bare substring of unrelated names (e.g. icontains 'ARI' matches 'Malaria')."""
-    q = Q()
-    for pattern in patterns:
-        q |= Q(**{f"{field_lookup}__iregex": rf"\y{re.escape(pattern)}\y"})
-    return q
-
-
 def _disease_surveillance_rows(facility, start_date, end_date):
     rows = []
     for label, patterns in DISEASE_SURVEILLANCE_LIST:
-        matched_disease = Disease.objects.filter(_word_boundary_q('name', patterns)).first()
+        matched_disease = Disease.objects.filter(word_boundary_q('name', patterns)).first()
 
         cases = 0
         if matched_disease:
             cases = Consultation.objects.filter(
-                _word_boundary_q('diagnosed_disease__name', patterns),
+                word_boundary_q('diagnosed_disease__name', patterns),
                 appointment__facility=facility, created_at__date__range=[start_date, end_date]
             ).count()
 

@@ -1,6 +1,8 @@
 # core/utils.py
+import re
 from datetime import timedelta
 
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -40,6 +42,16 @@ def format_last_active_label(last_active_at):
     if delta_days == 1:
         return "Yesterday"
     return f"{delta_days} Days"
+
+
+def word_boundary_q(field_lookup, patterns):
+    """Builds an OR'd Q using Postgres word-boundary regex (\\y) rather than icontains,
+    since short acronym patterns like "ARI"/"TB"/"HIV" would otherwise false-match as a
+    bare substring of unrelated names (e.g. icontains 'ARI' matches 'Malaria')."""
+    q = Q()
+    for pattern in patterns:
+        q |= Q(**{f"{field_lookup}__iregex": rf"\y{re.escape(pattern)}\y"})
+    return q
 
 
 def facility_status_from_last_active(last_active_at):
